@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+.idea/*
+desjardins_csv_files/*
+capital_one_csv_files/*
