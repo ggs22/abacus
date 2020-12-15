@@ -1,10 +1,9 @@
 import numpy as np
 import matplotlib.pyplot as plt
-import pandas as pd
+# import pandas as pd
 import argparse
 
 from csv_parser import CSV_Parser
-from csv_parser import CashFLow
 
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Abacus')
@@ -20,8 +19,11 @@ def parse_arguments():
 if __name__ == '__main__':
     args = parse_arguments()
 
-    a, b, c, d = CSV_Parser(args.desjardins_input_path, args.capital_one_input_path).get_data()
+    csv_parser = CSV_Parser(args.desjardins_input_path, args.capital_one_input_path)
+    a, b, c, d = csv_parser.get_data()
 
-    a.get_data_by_date()
+    a_mars, b_mars, c_mars, d_mars = csv_parser.get_data_by_date(month=3);
 
     print(a)
+
+    input('Press any key to quit...')
