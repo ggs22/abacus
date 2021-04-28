@@ -2,39 +2,9 @@ import argparse
 import colorama
 import re
 
+from tkinter import *
 from CSV_Parser import CSV_Parser
 from Grapher import Grapher
-
-# from kivy.app import App
-# from kivy.uix.widget import Widget
-# from kivy.uix.image import Image
-# from kivy.uix.label import Label
-# from kivy.uix.gridlayout import GridLayout
-
-
-# class AbacusImage(Image):
-#     self.source = 'images/capital_one_m.png'
-#     pass
-#
-#
-# class AbacusW(Widget):
-#     pass
-
-
-# class AbacusApp(App):
-#     def build(self):
-#         layout = GridLayout(cols=2, rows=3)
-#         # w = Widget()
-#         # l = Label('This and that')
-#         layout.add_widget(Image(source='images/capital_one_m.png', size=[500, 500]))
-#         layout.add_widget(Image(source='images/capital_one_m.png', size=[500, 500]))
-#         layout.add_widget(Image(source='images/capital_one_m.png', size=[500, 500]))
-#         layout.add_widget(Image(source='images/capital_one_m.png', size=[500, 500]))
-#         layout.add_widget(Image(source='images/capital_one_m.png', size=[500, 500]))
-#         layout.add_widget(Image(source='images/capital_one_m.png', size=[500, 500]))
-#         # w.add(l)
-#
-#         return layout
 
 
 def quit_abacus():
@@ -106,6 +76,26 @@ def parse_arguments():
 
 
 if __name__ == '__main__':
+
+    '''
+    TKinter
+    '''
+    root = Tk()
+    # creating the label widget
+    lbl1 = Label(root, text='This and that')
+    lbl2 = Label(root, text='and then some more...')
+    #1 pack (unsophistiated): shoving it onto the screen
+    # lbl.pack()
+
+    #2 grid
+    lbl1.grid(row=0, column=0)
+    lbl2.grid(row=0, column=1)
+
+    root.mainloop()
+
+
+
+
     args = parse_arguments()
     init = True
 
@@ -153,4 +143,3 @@ if __name__ == '__main__':
         res = input(' ' * 80 + '\b' * 80 + '>> ')
         process_command(res)
         init = False
-

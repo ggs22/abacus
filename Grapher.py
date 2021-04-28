@@ -38,48 +38,6 @@ def plot_cashflow(data: pd.DataFrame, x_col: str, y_col: str, legend=None, x_lab
     plt.show()
 
 
-def barplot_total(data_desjardins=None, data_co=None):
-
-    _data = None
-    if data_desjardins is not None:
-        _data = data_desjardins.copy()
-        _data['debit'] = _data['withdrawal']
-        _data['credit'] = _data['deposit']
-        del _data['withdrawal']
-        del _data['deposit']
-
-        _data['debit'] = -_data['debit']
-        _data = _data[_data['code'] != 'internal_cashflow']
-    if data_co is not None:
-        if _data is not None:
-            _tmp = data_co.copy()
-            _tmp['debit'] = -_tmp['debit']
-            _data = pd.concat([_tmp, _data], axis=0)
-            _data = _data[_data['code'] != 'internal_cashflow']
-        else:
-            _data = data_co.copy()
-            _data['debit'] = -_data['debit']
-            _data = _data[_data['code'] != 'internal_cashflow']
-
-    fig = plt.figure('')
-
-    _df = _data.loc[:, ['credit', 'debit', 'code']].groupby(by='code').sum()
-    abs_max = np.max([_df['debit'].abs().max(), _df['credit'].abs().max()])
-    abs_max = int(abs_max * 1.1)
-
-    set_plot_fore_color(fig=fig)
-
-    sns.barplot(data=_data, x='code', y='debit',
-                estimator=sum, color='r', errwidth=0)
-    sns.barplot(data=_data, x='code', y='credit',
-                estimator=sum, color='g', errwidth=0)
-
-    plt.ylim([-abs_max, abs_max])
-
-    plt.xticks(rotation=90)
-    plt.savefig(f'images/total.png')
-    plt.show()
-
 def barplot_desjardins(data: pd.DataFrame, fig_name):
     fig = plt.figure('Barplot Desjardins')
 
@@ -131,16 +89,28 @@ class Grapher:
         plot_cashflow(self._operations_account_data, 'date', 'balance')
 
     def plot_year_total(self, year: int):
-        year_op, _, _, year_capital_one = self._parser.get_data_by_date(year=year)
-        if year_op.shape[0] > 0:
-            data_desjardins = year_op.copy()
-        else:
-            data_desjardins = None
-        if year_capital_one.shape[0] > 0:
-            data_co = year_capital_one.copy()
-        else:
-            data_co = None
-        barplot_total(data_desjardins=data_desjardins, data_co=data_co)
+
+        _data = self._parser.get_combine_op_and_co()
+        _data[_data['date'].array.year == year]
+        _data['debit'] *= -1
+        fig = plt.figure('')
+
+        _df = _data.loc[:, ['credit', 'debit', 'code']].groupby(by='code').sum()
+        abs_max = np.max([_df['debit'].abs().max(), _df['credit'].abs().max()])
+        abs_max = int(abs_max * 1.1)
+
+        set_plot_fore_color(fig=fig)
+
+        sns.barplot(data=_data, x='code', y='debit',
+                    estimator=sum, color='r', errwidth=0)
+        sns.barplot(data=_data, x='code', y='credit',
+                    estimator=sum, color='g', errwidth=0)
+
+        plt.ylim([-abs_max, abs_max])
+
+        plt.xticks(rotation=90)
+        plt.savefig(f'images/total.png')
+        plt.show()
 
     def plot_year_desjardins(self, year: int):
         year_op, year_cl, year_sl, _ = self._parser.get_data_by_date(year=year)
@@ -166,3 +136,26 @@ class Grapher:
     def plot_all_months_capital_one(self):
         for month in range(1, 13):
             self.plot_month_capital_one(month=month)
+
+    def plot_total(self):
+        _data = self._parser.get_combine_op_and_co()
+        _data['debit'] *= -1
+
+        fig = plt.figure('')
+
+        _df = _data.loc[:, ['credit', 'debit', 'code']].groupby(by='code').sum()
+        abs_max = np.max([_df['debit'].abs().max(), _df['credit'].abs().max()])
+        abs_max = int(abs_max * 1.1)
+
+        set_plot_fore_color(fig=fig)
+
+        sns.barplot(data=_data, x='code', y='debit',
+                    estimator=sum, color='r', errwidth=0)
+        sns.barplot(data=_data, x='code', y='credit',
+                    estimator=sum, color='g', errwidth=0)
+
+        plt.ylim([-abs_max, abs_max])
+
+        plt.xticks(rotation=90)
+        plt.savefig(f'images/total.png')
+        plt.show()

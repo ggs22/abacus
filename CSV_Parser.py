@@ -135,8 +135,13 @@ def _load_capital_one_csv_files(input_path) -> pd.DataFrame:
 
 class CSV_Parser:
     '''
-    This classes is responsible for acquiring bank accounts transactions from csv file and parse it into manageable
+    This classes is responsible for acquiring bank accounts transactions from csv files and parsing it into manageable
     pandas Dataframes.
+        Theses accounts are suppported:
+            - Desjardins OP account (Operations)
+            - Desjardins CL account (Credit Line)
+            - Desjardins SL account (Student Loan)
+            - Costco Capital One
     '''
     def __init__(self, desjardins_input_path="", capital_one_input_path=""):
 
@@ -261,6 +266,35 @@ class CSV_Parser:
         self._raw_desjardins_data = pd.concat([self._raw_desjardins_data, _cash_flow], axis=0)
         self._raw_desjardins_data.drop_duplicates(keep='first', subset=names, inplace=True)
         self._raw_desjardins_data.sort_values(by='date', inplace=True)
+
+    def get_combine_op_and_co(self, year=None, month=None, day=None):
+        '''
+        This function combines the data from the Desjardins operations acouunt and the Capital One credit account,
+        making the necessary column's names changes. It returns the data for all available dates
+        :return:    Dataframe containing the combined transaction data from Desjardins OP account and CApital
+                    One Credit account
+        '''
+        _data = None
+        op,_,_,co = self.get_data_by_date(year=year, month=month, day=day)
+
+        if op.shape[0] > 0:
+            _data = self._raw_desjardins_data.copy()
+            _data['debit'] = _data['withdrawal']
+            _data['credit'] = _data['deposit']
+            del _data['withdrawal']
+            del _data['deposit']
+
+            _data = _data[_data['code'] != 'internal_cashflow']
+        if co.shape[0] > 0:
+            if _data is not None:
+                _data = pd.concat([_data, self._raw_capital_one_data.copy()], axis=0)
+            else:
+                _data = self._raw_capital_one_data.copy()
+
+        _data = _data[['date', 'description', 'credit', 'debit', 'code']]
+        _data.sort_values(by='date', inplace=True, ignore_index=True)
+        _data[['sum credit', 'sum debit']] = _data[['credit', 'debit']].cumsum(axis=0, )
+        return _data
 
     def update_desjardins_data_from_clipboard(self):
         '''
