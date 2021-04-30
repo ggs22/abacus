@@ -2,9 +2,9 @@ import argparse
 import colorama
 import re
 
-from tkinter import *
 from CSV_Parser import CSV_Parser
 from Grapher import Grapher
+from View import View
 
 
 def quit_abacus():
@@ -77,25 +77,6 @@ def parse_arguments():
 
 if __name__ == '__main__':
 
-    '''
-    TKinter
-    '''
-    root = Tk()
-    # creating the label widget
-    lbl1 = Label(root, text='This and that')
-    lbl2 = Label(root, text='and then some more...')
-    #1 pack (unsophistiated): shoving it onto the screen
-    # lbl.pack()
-
-    #2 grid
-    lbl1.grid(row=0, column=0)
-    lbl2.grid(row=0, column=1)
-
-    root.mainloop()
-
-
-
-
     args = parse_arguments()
     init = True
 
@@ -133,13 +114,13 @@ if __name__ == '__main__':
     commnands.append(Command(['q'], help_msg='Exit the program',
                              name='quit', method=quit_abacus))
 
-    # print_menu()
-    # AbacusApp().run()
+    view = View()
+    view.start()
 
-    while True:
-
-        print_menu()
-        print_commands()
-        res = input(' ' * 80 + '\b' * 80 + '>> ')
-        process_command(res)
-        init = False
+    # while True:
+    #
+    #     print_menu()
+    #     print_commands()
+    #     res = input(' ' * 80 + '\b' * 80 + '>> ')
+    #     process_command(res)
+    #     init = False
