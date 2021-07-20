@@ -3,11 +3,12 @@ import pandas as pd
 import seaborn as sns
 import numpy as np
 
-from CSV_Parser import CSV_Parser
+from CSVParser import CSVParser
 from pathlib import Path
+from io import BytesIO
 
 
-def set_plot_fore_color(fig: plt.Figure, plot_area_color=(0.35, 0.35, 0.35), fore_color=(0.85, 0.85, 0.85)):
+def _set_plot_fore_color(fig: plt.Figure, plot_area_color=(0.35, 0.35, 0.35), fore_color=(0.85, 0.85, 0.85)):
     fig.set_facecolor(plot_area_color)
     ax = plt.gca()
     ax.grid(linestyle='--', zorder=0.0)
@@ -22,11 +23,11 @@ def set_plot_fore_color(fig: plt.Figure, plot_area_color=(0.35, 0.35, 0.35), for
     ax.yaxis.label.set_color(fore_color)
 
 
-def plot_cashflow(data: pd.DataFrame, x_col: str, y_col: str, legend=None, x_label='', y_label='', color='g'):
-    fig = plt.figure()
+def _plot_cashflow(data: pd.DataFrame, x_col: str, y_col: str, legend=None, x_label='', y_label='', color='g'):
+    fig = plt.figure(figsize=(5, 5))
     data = data.sort_values(by='date')
 
-    set_plot_fore_color(fig=fig)
+    _set_plot_fore_color(fig=fig)
 
     plt.plot(data.loc[:, x_col], data.loc[:, y_col], color=color)
     plt.ylabel(y_label)
@@ -35,29 +36,55 @@ def plot_cashflow(data: pd.DataFrame, x_col: str, y_col: str, legend=None, x_lab
     if legend is not None:
         plt.legend(legend)
     plt.pause(0.05)
-    plt.show()
+    # plt.show()
+    return fig
 
 
-def barplot_desjardins(data: pd.DataFrame, fig_name):
-    fig = plt.figure('Barplot Desjardins')
+def barplot_desjardins(data: pd.DataFrame, fig_name: str = None, buffer=None, transaction: str = 'withdrawal',
+                       fig_size: tuple = None):
+    '''
+    :param data: Dataframe containing the Desjardins bank transactions information
+    :param fig_name: Optionnal figure name that will cause the figure to be saved
+    :param buffer: Optionnal memory buffer to output the figure
+    :param transaction: str, 'withdrawal' or 'deposit'
+    :param fig_size: Pyplot figure size, also determines Tkinter display size
+    :return: The pyplot figure of the plot
+    '''
 
-    set_plot_fore_color(fig=fig)
+    fig = plt.figure('Barplot Desjardins', figsize=fig_size)
 
-    data['withdrawal'] = -data['withdrawal']
-    data = data[data['code'] != 'internal_cashflow']
-    sns.barplot(data=data, x='code', y='withdrawal',
-                estimator=sum, color='r', errwidth=0)
-    sns.barplot(data=data, x='code', y='deposit',
-                estimator=sum, color='g', errwidth=0)
-    plt.xticks(rotation=90)
-    plt.savefig(f'images/{fig_name}.png')
-    plt.show()
+    _set_plot_fore_color(fig=fig)
+
+    # internal cashflows are not interesting
+    _data = data[data['code'] != 'internal_cashflow']
+    # Lets sort the relevant data out
+    _data = _data.loc[:, ['code', 'withdrawal']].groupby(by='code').sum()
+    _data = _data.sort_values(by='withdrawal', ascending=False)
+    # Display the data of interest
+    sns.barplot(data=_data, x=transaction, y=_data.index, color='r', errwidth=0)
+
+    plt.yticks([])
+    plt.ylabel('')
+
+    for i, ix in enumerate(_data.index):
+        plt.text(x=_data.loc[ix, 'withdrawal'], y=i, s=ix)
+
+    if fig_name is not None:
+        plt.savefig(f'images/{fig_name}.png')
+
+    if buffer is not None:
+        plt.savefig(buffer)
+        buffer.seek(0)
+    else:
+        plt.close()
+
+    return fig
 
 
 def plot_capital_one_debit(data: pd.DataFrame, fig_name):
     fig = plt.figure(f'{fig_name}')
 
-    set_plot_fore_color(fig=fig)
+    _set_plot_fore_color(fig=fig)
 
     data['debit'] = -data['debit']
     data = data[data['code'] != 'internal_cashflow']
@@ -70,23 +97,27 @@ def plot_capital_one_debit(data: pd.DataFrame, fig_name):
 
 
 class Grapher:
-    def __init__(self, parser: CSV_Parser):
+    def __init__(self, accounts: dict):
         plt.ion()
-        self._parser = parser
-        self._operations_account_data, self._credit_line_data, self._student_loan_data, self._capital_one_data \
-            = self._parser.get_data()
+
+        self._operations_account_data = accounts['desjardins_op']
+        self._credit_line_data = accounts['desjardins_mc']
+        self._student_loan_data = accounts['desjardins_sl']
+        self._ppcard_data = accounts['desjardins_pp']
+        self._capital_one_data = accounts['capital_one']
+
         Path.mkdir(Path('images'), exist_ok=True)
 
     # def plot
 
     def plot_capital_one(self):
-        plot_cashflow(self._capital_one_data, 'date', 'debit')
+        return _plot_cashflow(self._capital_one_data, 'date', 'debit')
 
     def plot_desjardins_mc(self):
-        plot_cashflow(self._credit_line_data, 'date', 'balance', x_label='date', y_label='balance')
+        return _plot_cashflow(self._credit_line_data, 'date', 'balance', x_label='date', y_label='balance')
 
     def plot_desjardins_op(self):
-        plot_cashflow(self._operations_account_data, 'date', 'balance')
+        return _plot_cashflow(self._operations_account_data, 'date', 'balance')
 
     def plot_year_total(self, year: int):
 
@@ -99,7 +130,7 @@ class Grapher:
         abs_max = np.max([_df['debit'].abs().max(), _df['credit'].abs().max()])
         abs_max = int(abs_max * 1.1)
 
-        set_plot_fore_color(fig=fig)
+        _set_plot_fore_color(fig=fig)
 
         sns.barplot(data=_data, x='code', y='debit',
                     estimator=sum, color='r', errwidth=0)
@@ -147,7 +178,7 @@ class Grapher:
         abs_max = np.max([_df['debit'].abs().max(), _df['credit'].abs().max()])
         abs_max = int(abs_max * 1.1)
 
-        set_plot_fore_color(fig=fig)
+        _set_plot_fore_color(fig=fig)
 
         sns.barplot(data=_data, x='code', y='debit',
                     estimator=sum, color='r', errwidth=0)

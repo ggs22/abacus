@@ -1,28 +1,33 @@
-"admin","other","cell","tickets","groceries","gaz","hydro","interest","internet","entertainement","rent","drugstore","software","hardware","restaurant","health","school","transport","cloths","voiture","Impots & TPS","credit","pay","internal_cashflow"
-"equifax","other","koodo","Paiement facture - AccèsD Internet /SHERBROOKE-INFRACT","metro","petro","Hdyro","assurance solde de CR particulier","Paiement facture - AccèsD Internet /ISP","brasserie","Chèque","parmaprix","GOOGLE *Google Storage","canadian tire","eggsquis","hopital","COOP DE L UNIVERSITE S SHERBROOKE ","bus","aldo","saaq","impôt","Dépôt divers au comptoir","paie ","Dépôt provenant de marge de crédit"
-"Frais au GA Interac/Plus","Dépôt direct - MEQ /AFE-Convers. de prêt en bo","irgin","contravention","provigo","ultramar","hydro","taxe assurance solde de CR particulier","BOITE ELECTRONIQUE","taverne","loyer","uniprix","Amazon.ca Prime Member","reno","tim horton","CLIN DENT DANY GIRARD","UNIVERSITE ","stl","simons","mécanique","impot","Versement d'un prêt",,"Avance au compte EOP"
-"Frais de Programme Pratique",,"cell","COUR MUNICIPALE","maxi ","esso",,"ASSURANCE SOLDE DSF PARTICULIER",,"saq",,"PHARMAPRIX","GOOGLE *Colaboratory","CDN TIRE","resto","clinique","Paiement facture - AccèsD Internet /UNIV SHERBROOKE","LIMOCAR","spring","Assurance /TD Assurance","TPS",,,"Remboursement prêt -AccèsD Internet"
-"frais fixes",,,,"iga ","station service",,"frais de crédit",,"bar",,"jean-coutu","GOOGLE*GOOGLE STORAGE","rona","restaurant",,"SHERBROOKE SCOL","taxi","winners","garage",,,,"Paiement facture - AccèsD Internet /CAPITAL ONE"
-"Paiement /DESJARDINS FIN. SECUR.   PASMC",,,,"lowblaws","shell",," ASSURANCE SOLDE DE CRÉDIT PARTICULIER",,"siboire",,"PHARMACIE",,"bmr","subway",,,"amt ",,"Assurance /MELOCHE MONNEX/SECURITE NAT'L",,,,"Remb. en capital - Internet"
-"Virement Interac FRAIS /Monica /",,,,"costco",,,"Virement-remboursement /à MC 02",,"caffucino",,"proxim",,"home hardwar","burger",,,"stm",,"mecanique",,,,"PAYMENT"
-,,,,"MARCHE",,,"TAXE QC ASS-SOLDE DSF PARTICULIER",,"cinema",,"JEAN COUTU",,"HOME DEPOT","harvey",,,,,"Société de l'assurance a",,,,
-,,,,"marché",,,"FRAIS D'INTÉRÊT",,"BLIZZARD",,"FAMILIPRIX",,,"a&w",,,,,,,,,
-,,,,,,,"INTEREST CHARGES",,"REFUGE DES BRASSEURS",,,,,"LE SOLEIL DE CHINE",,,,,,,,,
-,,,,,,,"Paiement /DESJARDINS FIN. SECUR. PASMC",,"5@8",,,,,"TUTTI FRUTTI",,,,,,,,,
-,,,,,,,"intérêt",,"STEAMPOWERED",,,,,"SNACK",,,,,,,,,
-,,,,,,,"Remboursement automatique /de EOP",,"Spotify",,,,,"CAFE CAUS COOPERATIVE",,,,,,,,,
-,,,,,,,,,"Aaron Lake",,,,,"CAFFUCCINO",,,,,,,,,
-,,,,,,,,,"CLEBARD",,,,,"JAIME TA FRAISE ",,,,,,,,,
-,,,,,,,,,"NETFLIX",,,,,"donald",,,,,,,,,
-,,,,,,,,,"BMWO",,,,,"LOUIS LUNCHEONETTE",,,,,,,,,
-,,,,,,,,,"SQDC",,,,,"A & W",,,,,,,,,
-,,,,,,,,,"U D S CENTRE SPORTIF",,,,,"cora ",,,,,,,,,
-,,,,,,,,,,,,,,"THAIZONE",,,,,,,,,
-,,,,,,,,,,,,,,"CAFE ARAGON",,,,,,,,,
-,,,,,,,,,,,,,,"SHOGUN SUSHI",,,,,,,,,
-,,,,,,,,,,,,,,"STARBUCKS",,,,,,,,,
-,,,,,,,,,,,,,,"THAI EXPRESS",,,,,,,,,
-,,,,,,,,,,,,,,"SKIPTHEDISHES",,,,,,,,,
-,,,,,,,,,,,,,,"SUSHI",,,,,,,,,
-,,,,,,,,,,,,,,"UBER   *EATS",,,,,,,,,
-,,,,,,,,,,,,,,"BRULLERIE DE CAFE DE S",,,,,,,,,
+admin,other,cell,tickets,groceries,gaz,hydro,interest,internet,entertainement,rent,drugstore,software,hardware,restaurant,health,school,transport,cloths,voiture,Impots & TPS,credit,pay,internal_cashflow
+equifax,other,koodo,Paiement facture - AccèsD Internet /SHERBROOKE-INFRACT,metro,petro,Hdyro,assurance solde de CR particulier,Paiement facture - AccèsD Internet /ISP,brasserie,Chèque,parmaprix,GOOGLE *Google Storage,canadian tire,eggsquis,hopital,COOP DE L UNIVERSITE S SHERBROOKE ,bus,aldo,saaq,impôt,Dépôt divers au comptoir,paie ,Dépôt provenant de marge de crédit
+Frais au GA Interac/Plus,Dépôt direct - MEQ /AFE-Convers. de prêt en bo,irgin,contravention,provigo,ultramar,hydro,taxe assurance solde de CR particulier,BOITE ELECTRONIQUE,taverne,loyer,uniprix,Amazon.ca Prime Member,reno,tim horton,CLIN DENT DANY GIRARD,UNIVERSITE ,stl,simons,mécanique,impot,Versement d'un prêt,,Avance au compte EOP
+Frais de Programme Pratique,amazon,cell,COUR MUNICIPALE,maxi ,esso,,ASSURANCE SOLDE DSF PARTICULIER,,saq,,PHARMAPRIX,GOOGLE *Colaboratory,CDN TIRE,resto,clinique,Paiement facture - AccèsD Internet /UNIV SHERBROOKE,LIMOCAR,spring,Assurance /TD Assurance,TPS,Depot divers au comptoir,,Remboursement prêt -AccèsD Internet
+frais fixes,rmbrsment,,COUR MUN. STE-FOY GTVT,iga ,station service,,frais de crédit,,bar,,jean-coutu,GOOGLE*GOOGLE STORAGE,rona,restaurant,ZENNI OPTICAL,SHERBROOKE SCOL,taxi,winners,garage,,Versement d'un prêt,,Paiement facture - AccèsD Internet /CAPITAL ONE
+Paiement /DESJARDINS FIN. SECUR.   PASMC,,,,lowblaws,shell,, ASSURANCE SOLDE DE CRÉDIT PARTICULIER,,siboire,,PHARMACIE,OWL FOR THUNDERBIRD,bmr,subway,,UDES CENTRE  DE SERVICE,amt ,ALDOSHOES,Assurance /MELOCHE MONNEX/SECURITE NAT'L,,,,Remb. en capital - Internet
+Virement Interac FRAIS /Monica /,,,,costco,,,Virement-remboursement /à MC 02,,caffucino,,proxim,google,home hardwar,burger,,NBX*Universit?? Sherbrook,stm,,mecanique,,,,PAYMENT
+FRAIS ANNUELS,,,,MARCHE,,,TAXE QC ASS-SOLDE DSF PARTICULIER,,cinema,,JEAN COUTU,,HOME DEPOT,harvey,,UDES,,,Société de l'assurance a,,,,PAIEMENT CAISSE
+,,,,marché,,,FRAIS D'INTÉRÊT,,BLIZZARD,,FAMILIPRIX,,,a&w,,,,,,,,,Dépôt provenant de marge de crédit
+,,,,METRO EN LIGNE,,,INTEREST CHARGES,,REFUGE DES BRASSEURS,,,,,LE SOLEIL DE CHINE,,,,,,,,,Paiement facture - AccèsD Internet /Carte prép
+,,,,METRO 2300 BELVEDERE,,,Paiement /DESJARDINS FIN. SECUR. PASMC,,5@8,,,,,TUTTI FRUTTI,,,,,,,,,AccèsD Internet /Visa Desja
+,,,,,,,intérêt,,STEAMPOWERED,,,,,SNACK,,,,,,,,,CARTE PREP
+,,,,,,,Remboursement automatique /de EOP,,Spotify,,,,,CAFE CAUS,,,,,,,,,Depot provenant de marge de credit
+,,,,,,,Virement-remboursement /a MC 02,,Aaron Lake,,,,,CAFFUCCINO,,,,,,,,,AccesD Internet /Visa Desja
+,,,,,,,,,CLEBARD,,,,,JAIME TA FRAISE ,,,,,,,,,
+,,,,,,,,,NETFLIX,,,,,donald,,,,,,,,,
+,,,,,,,,,BMWO,,,,,LOUIS LUNCHEONETTE,,,,,,,,,
+,,,,,,,,,SQDC,,,,,A & W,,,,,,,,,
+,,,,,,,,,U D S CENTRE SPORTIF,,,,,cora ,,,,,,,,,
+,,,,,,,,,STEAM PURCHASE,,,,,THAIZONE,,,,,,,,,
+,,,,,,,,,STEAMGAMES,,,,,CAFE ARAGON,,,,,,,,,
+,,,,,,,,,GOLDEN LION PUB,,,,,SHOGUN SUSHI,,,,,,,,,
+,,,,,,,,,Retrait au GA,,,,,STARBUCKS,,,,,,,,,
+,,,,,,,,,Retrait à un GA,,,,,THAI EXPRESS,,,,,,,,,
+,,,,,,,,,Retrait a un GA,,,,,SKIPTHEDISHES,,,,,,,,,
+,,,,,,,,,bistro,,,,,SUSHI,,,,,,,,,
+,,,,,,,,,,,,,,UBER   *EATS,,,,,,,,,
+,,,,,,,,,,,,,,BRULLERIE DE CAFE DE S,,,,,,,,,
+,,,,,,,,,,,,,,pizza,,,,,,,,,
+,,,,,,,,,,,,,,ROTISSERIE,,,,,,,,,
+,,,,,,,,,,,,,,Paiement /PAYPAL,,,,,,,,,
+,,,,,,,,,,,,,,POKE BOL,,,,,,,,,
+,,,,,,,,,,,,,,VILLAGE GREC,,,,,,,,,

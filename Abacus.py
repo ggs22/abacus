@@ -1,8 +1,12 @@
 import argparse
+import time
+
 import colorama
 import re
+import threading
+import queue
 
-from CSV_Parser import CSV_Parser
+from CSVParser import CSVParser
 from Grapher import Grapher
 from View import View
 
@@ -68,30 +72,47 @@ def print_menu():
 def parse_arguments():
     parser = argparse.ArgumentParser(description='Abacus')
     parser.add_argument('-i', '--desjardins_input_path', type=str, help='Choose the input csv files path',
-                        required=False)
+                        required=False, default='./desjardins_csv_files')
+    parser.add_argument('-p', '--desjardins_ppcard_input_path', type=str, help='Choose the input csv files path',
+                        required=False, default='./desjardins_ppcard_pdf_files')
     parser.add_argument('-c', '--capital_one_input_path', type=str, help='Choose the input csv files path',
-                        required=False)
+                        required=False, default='./capital_one_csv_files')
 
     return parser.parse_args()
 
 
+def start_gui():
+    view = View(csv_parser)
+
+    view.set_desjardons_mc_treeview()
+    view.display_desjardins_op()
+    view.display_desjardins_op2()
+    view.display_desjardins_op3()
+
+    view.start()
+
+
 if __name__ == '__main__':
+
+    th = threading.Thread(target=start_gui, daemon=True)
 
     args = parse_arguments()
     init = True
+    # q = queue.Queue()
 
-    csv_parser = CSV_Parser(args.desjardins_input_path, args.capital_one_input_path)
-    grapher = Grapher(parser=csv_parser)
-    desjardins_op, desjardins_mc, desjardins_sloan, capital_one = csv_parser.get_data()
+    csv_parser = CSVParser(desjardins_input_path=args.desjardins_input_path,
+                           desjardins_ppcard_input_path=args.desjardins_ppcard_input_path,
+                           capital_one_input_path=args.capital_one_input_path)
+    grapher = Grapher(accounts=csv_parser.accounts)
+    desjardins_op, desjardins_mc, desjardins_sloan, capital_one, ppcard = csv_parser.get_accounts()
 
     commnands = list()
 
     commnands.append(Command(['ty'], help_msg='Plot Total Yearly Balance',
                              name='Total Yearly Balance', method=grapher.plot_year_total, year=2020))
 
-    commnands.append(Command(['cco'], help_msg='Update Capital One data from clipboard',
-                             name='Update Capital One data - clipboard',
-                             method=csv_parser.update_desjardins_data_from_clipboard))
+    commnands.append(Command(['udd'], help_msg='Update Desjardins data from new csv files',
+                             name='Update Desjardins data', method=csv_parser.update_desjardins_data))
     commnands.append(Command(['uco'], help_msg='Update Capital One data from csv files',
                              name='Update Capital One data', method=csv_parser.update_capital_one_data,
                              input_path='./capital_one_csv_files'))
@@ -110,17 +131,18 @@ if __name__ == '__main__':
     commnands.append(Command(['pco'], help_msg='Plot Capital One balance',
                              name='Plot Capital One balance', method=grapher.plot_capital_one))
     commnands.append(Command(['s'], help_msg='Save current codes',
-                             name='save', method=quit_abacus))
+                             name='save', method=csv_parser.save_all_accounts))
     commnands.append(Command(['q'], help_msg='Exit the program',
                              name='quit', method=quit_abacus))
 
-    view = View()
-    view.start()
+    # start gui thread
+    th.start()
 
-    # while True:
-    #
-    #     print_menu()
-    #     print_commands()
-    #     res = input(' ' * 80 + '\b' * 80 + '>> ')
-    #     process_command(res)
-    #     init = False
+    while True:
+        print_menu()
+        print_commands()
+        res = input(' ' * 80 + '\b' * 80 + '>> ')
+        process_command(res)
+        init = False
+
+        time.sleep(0.2)
