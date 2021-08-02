@@ -115,7 +115,7 @@ if __name__ == '__main__':
                              name='Update Desjardins data', method=csv_parser.update_desjardins_data))
     commnands.append(Command(['uco'], help_msg='Update Capital One data from csv files',
                              name='Update Capital One data', method=csv_parser.update_capital_one_data,
-                             input_path='./capital_one_csv_files'))
+                             input_path='data/capital_one_csv_files'))
     commnands.append(Command(['pdy'], help_msg='Plot Desjardins Yearly Balance',
                              name='Desjardins Yearly Balance', method=grapher.plot_year_desjardins, year=2020))
     commnands.append(Command(['pcoy'], help_msg='Plot Capital One Yearly Expenses',

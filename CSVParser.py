@@ -1,12 +1,18 @@
 import numpy as np
 import pandas as pd
 import pickle
-import datetime
 import colorama
-import PyPDF2
 import re
+import os
+import datetime
 
-from pathlib import Path
+# from pathlib import Path
+from dataclasses import dataclass
+from enum import Enum
+from abc import abstractmethod
+from datetime import timedelta
+from abc import ABC
+from typing import Optional
 
 
 def _print_codes_menu(codes, transaction):
@@ -36,7 +42,7 @@ def _get_codes(cashflow: pd.DataFrame, description_column="description") -> pd.S
                         "assignations.csv"
     """
     descriptions = cashflow.loc[:, description_column]
-    assignations = pd.read_csv('assignations.csv', encoding='utf-8', sep=',').dropna(axis=1, how='all')
+    assignations = pd.read_csv('data/assignations.csv', encoding='utf-8', sep=',').dropna(axis=1, how='all')
     codes = list()
     for index, description in enumerate(descriptions):
         codes.append("na")
@@ -123,39 +129,6 @@ def _load_desjardins_ppcard_pdf_files(input_path) -> pd.DataFrame:
     return _cash_flow
 
 
-def _load_desjardins_csv_files(input_path) -> pd.DataFrame:
-    """
-    This function returns an aggloromated dataframe from dejardins csv files
-    args:
-        - input_path        location of csv files to be agglomerated
-    """
-
-    if input_path == '':
-        raise ValueError('please specify a path for Desjardins CSV files')
-
-    # Desjardins csv files columns names
-    names = ['branch', 'foliot', 'account', 'date', 'transaction_num', 'description', 'fees', 'withdrawal',
-             'deposit', 'interests', 'capital_paid', 'advance', 'reimboursment', 'balance']
-
-    csv_files = Path(input_path).glob('*.csv')
-    _cash_flow = pd.DataFrame(columns=names)
-    for x in csv_files:
-        if x.is_file():
-            _cash_flow = _cash_flow.append(pd.read_csv(x.as_posix(),
-                                                       encoding='latin1',
-                                                       names=names),
-                                           ignore_index=True)
-
-    # Convert strings to actual date time objects
-    _cash_flow['date'] = pd.to_datetime(_cash_flow['date'], format='%Y-%m-%d')
-
-    # Adds column,and inputs transaction code
-    _cash_flow['code'] = _get_codes(_cash_flow)
-    _cash_flow = _cash_flow.replace(np.nan, 0)
-
-    return Account(_cash_flow)
-
-
 def _load_capital_one_csv_files(input_path) -> pd.DataFrame:
     """
     This function returns an aggloromated dataframe from capital one csv files
@@ -185,57 +158,6 @@ def _load_capital_one_csv_files(input_path) -> pd.DataFrame:
     del _cash_flow['posted_date']
 
     return _cash_flow
-
-
-# TODO refactor to make an account class with save, load, get_data etc. methods.
-# properties: name, current_balance, interest_rate, type, status,
-# methodes: save, load, get_data, get_data_by_date, get_predicted_balance, get_interest_capitalization
-class Account(pd.DataFrame):
-
-    def __init__(self, df):
-        # super.__init__(df)
-        super().__init__(df)
-        if 'date' in df.columns:
-            df.sort_values(by='date')
-        if 'balance' in df.columns:
-            self.curren_balance = df.iloc[-1:, df.columns == 'balance']
-        elif 'credit/payment' in df.columns:
-            self.curren_balance = df['credit/payment'].sum()
-
-    def get_data_by_date(self, year=None, month=None, day=None):
-        """
-        This function returns transactions for a specified time period. If year, month and day are
-        not specified, defaults to all current year transactions
-        args:
-            - year:         year of the requested data, defaults to current year
-            - month:        month of the requested data, defaults to current month
-            - day:          day of the requested data, defaults to current day
-        """
-
-        if year is None:
-            year = datetime.date.today().year
-        _res = self[self['date'].array.year == year]
-
-        if month is not None:
-            _res = _res[_res['date'].array.month == month]
-
-        # if day is none we get transaction for the whole month
-        if day is not None:
-            _res = _res[_res['date'].array.day == day]
-
-        return _res
-
-    # TODO keep going
-    # def _load_desjardins_ppcard_data(self):
-    # def _load_desjardins_data(self):
-    # def get_combine_op_and_co(self, year=None, month=None, day=None):
-    # def update_desjardins_data(self, input_path=None):
-    # def update_desjardins_data_from_clipboard(self):
-    # def update_capital_one_data(self, input_path):
-    # def save_desjarding_data(self):
-    # def save_desjarding_ppcard_data(self):
-    # def save_capital_one_data(self):
-    # def save_all_accounts(self):
 
 
 class CSVParser:
@@ -308,181 +230,181 @@ class CSVParser:
     def get_accounts(self):
         return self.accounts
 
-    # def _load_desjardins_ppcard_data(self):
-    #     """Load Desjardins preparid credit cardt data from pickle object or pdf file"""
-    #     _desjardins_file_name = self._pickle_objects_root + "desjardins_ppcard.pkl"
-    #
-    #     if Path(_desjardins_file_name).exists():
-    #         with open(_desjardins_file_name, 'rb') as _df_file:
-    #             self._raw_desjardins_ppcard_data = pickle.load(_df_file)
-    #     else:
-    #         if self._desjardins_ppcard_input_path != "":
-    #             self._raw_desjardins_ppcard_data = _load_desjardins_ppcard_pdf_files(self._desjardins_ppcard_input_path)
-    #
-    #     self._raw_desjardins_ppcard_data = self._raw_desjardins_ppcard_data.sort_values(by=['date', 'transaction_num'])
-    #
-    # def _load_desjardins_data(self):
-    #     """Load Desjardins data from pickle object or csv file"""
-    #     _desjardins_file_name = self._pickle_objects_root + "desjardins.pkl"
-    #
-    #     if Path(_desjardins_file_name).exists():
-    #         with open(_desjardins_file_name, 'rb') as _df_file:
-    #             self._raw_desjardins_data = Account(pickle.load(_df_file))
-    #     else:
-    #         if self._desjardins_input_path != "":
-    #             self._raw_desjardins_data = _load_desjardins_csv_files(self._desjardins_input_path)
-    #
-    #     self._raw_desjardins_data = self._raw_desjardins_data.sort_values(by=['account', 'date', 'transaction_num'])
-    #
-    # def _load_capital_one_data(self):
-    #     """Load Capital One data from pickle object or csv file"""
-    #     _capital_one_file_name = self._pickle_objects_root + "capital_one.pkl"
-    #
-    #     if Path(_capital_one_file_name).exists():
-    #         with open(_capital_one_file_name, 'rb') as _df_file:
-    #             self._raw_capital_one_data = pickle.load(_df_file)
-    #     else:
-    #         if self._desjardins_input_path != "":
-    #             self._raw_capital_one_data = _load_capital_one_csv_files(self._capital_one_input_path)
-    #
-    #     self._raw_capital_one_data = self._raw_capital_one_data.sort_values(by='date')
-    #
-    # def get_combine_op_and_co(self, year=None, month=None, day=None):
-    #     """
-    #     This function combines the data from the Desjardins operations acount and the Capital One credit account,
-    #     making the necessary column's names changes. It returns the data for all available dates
-    #     :return:    Dataframe containing the combined transaction data from Desjardins OP account and CApital
-    #                 One Credit account
-    #     """
-    #     _data = None
-    #     op, _, _, co = self.get_data_by_date(year=year, month=month, day=day)
-    #
-    #     if op.shape[0] > 0:
-    #         _data = self._raw_desjardins_data.copy()
-    #         _data['debit'] = _data['withdrawal']
-    #         _data['credit'] = _data['deposit']
-    #         del _data['withdrawal']
-    #         del _data['deposit']
-    #
-    #         _data = _data[_data['code'] != 'internal_cashflow']
-    #     if co.shape[0] > 0:
-    #         if _data is not None:
-    #             _data = pd.concat([_data, self._raw_capital_one_data.copy()], axis=0)
-    #         else:
-    #             _data = self._raw_capital_one_data.copy()
-    #
-    #     _data = _data[['date', 'description', 'credit', 'debit', 'code']]
-    #     _data.sort_values(by='date', inplace=True, ignore_index=True)
-    #     _data[['sum credit', 'sum debit']] = _data[['credit', 'debit']].cumsum(axis=0, )
-    #     return _data
-    #
-    # def update_desjardins_data(self, input_path=None):
-    #     """Update Desjardins data from csv file"""
-    #
-    #     if input_path is None:
-    #         input_path = self._desjardins_input_path
-    #
-    #     if not Path(input_path).exists():
-    #         raise ValueError('please specify a path for Desjardins CSV files')
-    #
-    #     # Desjardins csv files columns names
-    #     names = ['branch', 'foliot', 'account', 'date', 'transaction_num', 'description', 'fees', 'withdrawal',
-    #              'deposit', 'interests', 'capital_paid', 'advance', 'reimboursment', 'balance']
-    #
-    #     csv_files = Path(input_path).glob('*.csv')
-    #     _cash_flow = pd.DataFrame()
-    #     for x in csv_files:
-    #         if x.is_file():
-    #             _new = pd.read_csv(x.as_posix(), encoding='latin1', names=names)
-    #             for _ix, row in _new.iterrows():
-    #                 if (row['date'], row['transaction_num']) in self._raw_desjardins_data.set_index(
-    #                         keys=['date', 'transaction_num']).index:
-    #                     continue
-    #                 else:
-    #                     _cash_flow = _cash_flow.append(row, ignore_index=True)
-    #
-    #     # Convert strings to actual date time objects
-    #     _cash_flow['date'] = pd.to_datetime(_cash_flow['date'], format='%Y-%m-%d')
-    #     _cash_flow['code'] = _get_codes(_cash_flow)
-    #     _cash_flow = _cash_flow.replace(np.nan, 0)
-    #
-    #     self._raw_desjardins_data = pd.concat([self._raw_desjardins_data, _cash_flow], axis=0)
-    #     self._raw_desjardins_data.drop_duplicates(keep='first', subset=names, inplace=True)
-    #     self._raw_desjardins_data.sort_values(by='date', inplace=True)
-    #
-    #     self._split_accounts()
-    #     self.save_desjarding_data()
-    #
-    # def update_desjardins_data_from_clipboard(self):
-    #     """
-    #     Update Desjardins data from clipboard-contained information (when copying data that is not yet on a statement
-    #     from Desjardins)
-    #     """
-    #
-    #     # Desjardins files columns names
-    #     names = ['date', 'description', 'withdrawal', 'deposit', 'balance']
-    #
-    #     try:
-    #         _cash_flow = pd.read_clipboard(names=names)
-    #
-    #         # Convert strings to actual date time objects
-    #         _cash_flow['date'] = pd.to_datetime(_cash_flow['date'])
-    #         _cash_flow = _cash_flow.replace(np.nan, 0)
-    #
-    #         self._raw_desjardins_data = pd.concat([self._raw_desjardins_data, _cash_flow], axis=0)
-    #         self._raw_desjardins_data.drop_duplicates(keep='first', subset=names, inplace=True)
-    #         self._raw_desjardins_data.sort_values(by='date', inplace=True)
-    #
-    #     except BufferError:
-    #         print(colorama.Fore.YELLOW + "Clipboard content is not recognized..." + colorama.Fore.RESET)
-    #
-    # def update_capital_one_data(self, input_path):
-    #     """Update Capital One data from new csv file(s)"""
-    #
-    #     if input_path == '':
-    #         raise ValueError('please specify a path for Capital One CSV files')
-    #
-    #     # Capital One csv files columns names
-    #     names = ['date', 'posted_date', 'card_num', 'description', 'category', 'debit', 'credit']
-    #
-    #     csv_files = Path(input_path).glob('*.csv')
-    #     _cash_flow = pd.DataFrame(columns=names)
-    #     for x in csv_files:
-    #         if x.is_file():
-    #             _cash_flow = _cash_flow.append(pd.read_csv(x.as_posix(), encoding='latin1', names=names, header=0),
-    #                                            ignore_index=True)
-    #
-    #     # Convert strings to actual date time objects
-    #     _cash_flow['date'] = pd.to_datetime(_cash_flow['date'], format='%Y-%m-%d')
-    #     _cash_flow = _cash_flow.replace(np.nan, 0)
-    #
-    #     self._raw_capital_one_data = pd.concat([self._raw_capital_one_data, _cash_flow], axis=0)
-    #     self._raw_capital_one_data.drop_duplicates(keep='first', subset=names, inplace=True)
-    #     self._raw_capital_one_data.sort_values(by='date', inplace=True)
-    #     self._raw_capital_one_data.sort_values['posted_date']
-    #
-    # def save_desjarding_data(self):
-    #     """Save Desjardins data as pickle object"""
-    #     Path(self._pickle_objects_root).mkdir(exist_ok=True)
-    #     _desjardins_file_name = self._pickle_objects_root + "desjardins.pkl"
-    #     with open(_desjardins_file_name, 'wb') as _df_file:
-    #         pickle.dump(self._raw_desjardins_data, _df_file, pickle.HIGHEST_PROTOCOL)
-    #
-    # def save_desjarding_ppcard_data(self):
-    #     """Save Desjardins data as pickle object"""
-    #     Path(self._pickle_objects_root).mkdir(exist_ok=True)
-    #     _desjardins_file_name = self._pickle_objects_root + "desjardins_ppcard.pkl"
-    #     with open(_desjardins_file_name, 'wb') as _df_file:
-    #         pickle.dump(self._raw_desjardins_ppcard_data, _df_file, pickle.HIGHEST_PROTOCOL)
-    #
-    # def save_capital_one_data(self):
-    #     """Save Capital One data as pickle object"""
-    #     Path(self._pickle_objects_root).mkdir(exist_ok=True)
-    #     _capital_one_file_name = self._pickle_objects_root + "capital_one.pkl"
-    #     with open(_capital_one_file_name, 'wb') as _df_file:
-    #         pickle.dump(self._raw_capital_one_data, _df_file, pickle.HIGHEST_PROTOCOL)
-    #
-    # def save_all_accounts(self):
-    #     self.save_desjarding_data()
-    #     self.save_desjarding_ppcard_data()
-    #     self.save_capital_one_data()
+    def _load_desjardins_ppcard_data(self):
+        """Load Desjardins preparid credit cardt data from pickle object or pdf file"""
+        _desjardins_file_name = self._pickle_objects_root + "desjardins_ppcard.pkl"
+
+        if Path(_desjardins_file_name).exists():
+            with open(_desjardins_file_name, 'rb') as _df_file:
+                self._raw_desjardins_ppcard_data = pickle.load(_df_file)
+        else:
+            if self._desjardins_ppcard_input_path != "":
+                self._raw_desjardins_ppcard_data = _load_desjardins_ppcard_pdf_files(self._desjardins_ppcard_input_path)
+
+        self._raw_desjardins_ppcard_data = self._raw_desjardins_ppcard_data.sort_values(by=['date', 'transaction_num'])
+
+    def _load_desjardins_data(self):
+        """Load Desjardins data from pickle object or csv file"""
+        _desjardins_file_name = self._pickle_objects_root + "desjardins.pkl"
+
+        if Path(_desjardins_file_name).exists():
+            with open(_desjardins_file_name, 'rb') as _df_file:
+                self._raw_desjardins_data = Account(pickle.load(_df_file))
+        else:
+            if self._desjardins_input_path != "":
+                self._raw_desjardins_data = _load_desjardins_csv_files(self._desjardins_input_path)
+
+        self._raw_desjardins_data = self._raw_desjardins_data.sort_values(by=['account', 'date', 'transaction_num'])
+
+    def _load_capital_one_data(self):
+        """Load Capital One data from pickle object or csv file"""
+        _capital_one_file_name = self._pickle_objects_root + "capital_one.pkl"
+
+        if Path(_capital_one_file_name).exists():
+            with open(_capital_one_file_name, 'rb') as _df_file:
+                self._raw_capital_one_data = pickle.load(_df_file)
+        else:
+            if self._desjardins_input_path != "":
+                self._raw_capital_one_data = _load_capital_one_csv_files(self._capital_one_input_path)
+
+        self._raw_capital_one_data = self._raw_capital_one_data.sort_values(by='date')
+
+    def get_combine_op_and_co(self, year=None, month=None, day=None):
+        """
+        This function combines the data from the Desjardins operations acount and the Capital One credit account,
+        making the necessary column's names changes. It returns the data for all available dates
+        :return:    Dataframe containing the combined transaction data from Desjardins OP account and CApital
+                    One Credit account
+        """
+        _data = None
+        op, _, _, co = self.get_data_by_date(year=year, month=month, day=day)
+
+        if op.shape[0] > 0:
+            _data = self._raw_desjardins_data.copy()
+            _data['debit'] = _data['withdrawal']
+            _data['credit'] = _data['deposit']
+            del _data['withdrawal']
+            del _data['deposit']
+
+            _data = _data[_data['code'] != 'internal_cashflow']
+        if co.shape[0] > 0:
+            if _data is not None:
+                _data = pd.concat([_data, self._raw_capital_one_data.copy()], axis=0)
+            else:
+                _data = self._raw_capital_one_data.copy()
+
+        _data = _data[['date', 'description', 'credit', 'debit', 'code']]
+        _data.sort_values(by='date', inplace=True, ignore_index=True)
+        _data[['sum credit', 'sum debit']] = _data[['credit', 'debit']].cumsum(axis=0, )
+        return _data
+
+    def update_desjardins_data(self, input_path=None):
+        """Update Desjardins data from csv file"""
+
+        if input_path is None:
+            input_path = self._desjardins_input_path
+
+        if not Path(input_path).exists():
+            raise ValueError('please specify a path for Desjardins CSV files')
+
+        # Desjardins csv files columns names
+        names = ['branch', 'foliot', 'account', 'date', 'transaction_num', 'description', 'fees', 'withdrawal',
+                 'deposit', 'interests', 'capital_paid', 'advance', 'reimboursment', 'balance']
+
+        csv_files = Path(input_path).glob('*.csv')
+        _cash_flow = pd.DataFrame()
+        for x in csv_files:
+            if x.is_file():
+                _new = pd.read_csv(x.as_posix(), encoding='latin1', names=names)
+                for _ix, row in _new.iterrows():
+                    if (row['date'], row['transaction_num']) in self._raw_desjardins_data.set_index(
+                            keys=['date', 'transaction_num']).index:
+                        continue
+                    else:
+                        _cash_flow = _cash_flow.append(row, ignore_index=True)
+
+        # Convert strings to actual date time objects
+        _cash_flow['date'] = pd.to_datetime.datetime(_cash_flow['date'], format='%Y-%m-%d')
+        _cash_flow['code'] = _get_codes(_cash_flow)
+        _cash_flow = _cash_flow.replace(np.nan, 0)
+
+        self._raw_desjardins_data = pd.concat([self._raw_desjardins_data, _cash_flow], axis=0)
+        self._raw_desjardins_data.drop_duplicates(keep='first', subset=names, inplace=True)
+        self._raw_desjardins_data.sort_values(by='date', inplace=True)
+
+        self._split_accounts()
+        self.save_desjarding_data()
+
+    def update_desjardins_data_from_clipboard(self):
+        """
+        Update Desjardins data from clipboard-contained information (when copying data that is not yet on a statement
+        from Desjardins)
+        """
+
+        # Desjardins files columns names
+        names = ['date', 'description', 'withdrawal', 'deposit', 'balance']
+
+        try:
+            _cash_flow = pd.read_clipboard(names=names)
+
+            # Convert strings to actual date time objects
+            _cash_flow['date'] = pd.to_datetime(_cash_flow['date'])
+            _cash_flow = _cash_flow.replace(np.nan, 0)
+
+            self._raw_desjardins_data = pd.concat([self._raw_desjardins_data, _cash_flow], axis=0)
+            self._raw_desjardins_data.drop_duplicates(keep='first', subset=names, inplace=True)
+            self._raw_desjardins_data.sort_values(by='date', inplace=True)
+
+        except BufferError:
+            print(colorama.Fore.YELLOW + "Clipboard content is not recognized..." + colorama.Fore.RESET)
+
+    def update_capital_one_data(self, input_path):
+        """Update Capital One data from new csv file(s)"""
+
+        if input_path == '':
+            raise ValueError('please specify a path for Capital One CSV files')
+
+        # Capital One csv files columns names
+        names = ['date', 'posted_date', 'card_num', 'description', 'category', 'debit', 'credit']
+
+        csv_files = Path(input_path).glob('*.csv')
+        _cash_flow = pd.DataFrame(columns=names)
+        for x in csv_files:
+            if x.is_file():
+                _cash_flow = _cash_flow.append(pd.read_csv(x.as_posix(), encoding='latin1', names=names, header=0),
+                                               ignore_index=True)
+
+        # Convert strings to actual date time objects
+        _cash_flow['date'] = pd.to_datetime(_cash_flow['date'], format='%Y-%m-%d')
+        _cash_flow = _cash_flow.replace(np.nan, 0)
+
+        self._raw_capital_one_data = pd.concat([self._raw_capital_one_data, _cash_flow], axis=0)
+        self._raw_capital_one_data.drop_duplicates(keep='first', subset=names, inplace=True)
+        self._raw_capital_one_data.sort_values(by='date', inplace=True)
+        self._raw_capital_one_data.sort_values['posted_date']
+
+    def save_desjarding_data(self):
+        """Save Desjardins data as pickle object"""
+        Path(self._pickle_objects_root).mkdir(exist_ok=True)
+        _desjardins_file_name = self._pickle_objects_root + "desjardins.pkl"
+        with open(_desjardins_file_name, 'wb') as _df_file:
+            pickle.dump(self._raw_desjardins_data, _df_file, pickle.HIGHEST_PROTOCOL)
+
+    def save_desjarding_ppcard_data(self):
+        """Save Desjardins data as pickle object"""
+        Path(self._pickle_objects_root).mkdir(exist_ok=True)
+        _desjardins_file_name = self._pickle_objects_root + "desjardins_ppcard.pkl"
+        with open(_desjardins_file_name, 'wb') as _df_file:
+            pickle.dump(self._raw_desjardins_ppcard_data, _df_file, pickle.HIGHEST_PROTOCOL)
+
+    def save_capital_one_data(self):
+        """Save Capital One data as pickle object"""
+        Path(self._pickle_objects_root).mkdir(exist_ok=True)
+        _capital_one_file_name = self._pickle_objects_root + "capital_one.pkl"
+        with open(_capital_one_file_name, 'wb') as _df_file:
+            pickle.dump(self._raw_capital_one_data, _df_file, pickle.HIGHEST_PROTOCOL)
+
+    def save_all_accounts(self):
+        self.save_desjarding_data()
+        self.save_desjarding_ppcard_data()
+        self.save_capital_one_data()
