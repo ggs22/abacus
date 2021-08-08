@@ -6,9 +6,9 @@ import PIL
 import io
 import tkinter as tk
 
-from CSVParser import Account
+from Accounts import Account
 from tkinter import ttk
-from Grapher import *
+# from Grapher import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 _tree_view_font_size = 9
@@ -16,7 +16,7 @@ _tree_view_font_size = 9
 
 class View:
 
-    def __init__(self, csv_parser: CSVParser):
+    def __init__(self):
         # set root
         self.root = tk.Tk()
         self.root.title('Abacus')
@@ -31,15 +31,6 @@ class View:
         self.root.configure(background='#777777')
 
         self.main_tview = None
-
-        # set external objects dependencies
-        self.csv_parser = csv_parser
-        self.grapher = Grapher(accounts=csv_parser.accounts)
-        self.accounts = self.csv_parser.get_accounts()
-
-        # Custom functions
-        self.set_button_action()
-        self.set_desjardons_mc_treeview
 
     def start(self):
         self.root.mainloop()
@@ -78,32 +69,7 @@ class View:
 
         self.main_tview.grid(row=0, column=1, rowspan=50)
 
-    def set_desjardins_op_treeview(self):
-        accounts = self.csv_parser.get_accounts()
-        self.inscribe_dataframe(accounts['desjardins_op'], labels=['date', 'transaction_num', 'description', 'withdrawal',
-                                                       'deposit', 'balance', 'code'])
-
-    def set_desjardons_mc_treeview(self):
-        desjardins_mc = self.csv_parser.get_accounts()
-        self.inscribe_dataframe(desjardins_mc['desjardins_mc'], labels=['date', 'transaction_num', 'description', 'withdrawal',
-                                                       'deposit', 'balance', 'code'])
-
-    def _display_figure(self, fig, row=0, column=0):
+    def display_figure(self, fig, row=0, column=0):
         canva = FigureCanvasTkAgg(fig, master=self.root)
         canva.draw()
         canva.get_tk_widget().grid(row=row, column=column)
-
-    def display_desjardins_op(self):
-        data = self.accounts['desjardins_op'].get_data_by_date(year=2020)
-        f = barplot_desjardins(data=data, fig_size=(5, 2))
-        self._display_figure(fig=f, row=0, column=3)
-
-    def display_desjardins_op2(self):
-        data = self.accounts['desjardins_op'].get_data_by_date(year=2020, month=1)
-        f = barplot_desjardins(data=data, fig_size=(5, 2))
-        self._display_figure(fig=f, row=1, column=3)
-
-    def display_desjardins_op3(self):
-        data = self.accounts['desjardins_op'].get_data_by_date(year=2020, month=1)
-        f = barplot_desjardins(data=data, fig_size=(5, 2))
-        self._display_figure(fig=f, row=0, column=4)

@@ -5,9 +5,9 @@ import colorama
 import re
 import threading
 import queue
+import Accounts
 
-from CSVParser import CSVParser
-from Grapher import Grapher
+from Accounts import *
 from View import View
 
 
@@ -70,6 +70,7 @@ def print_menu():
 
 
 def parse_arguments():
+    # TODO remove arguments
     parser = argparse.ArgumentParser(description='Abacus')
     parser.add_argument('-i', '--desjardins_input_path', type=str, help='Choose the input csv files path',
                         required=False, default='./desjardins_csv_files')
@@ -82,12 +83,12 @@ def parse_arguments():
 
 
 def start_gui():
-    view = View(csv_parser)
+    view = View()
 
-    view.set_desjardons_mc_treeview()
-    view.display_desjardins_op()
-    view.display_desjardins_op2()
-    view.display_desjardins_op3()
+    kwargs = {'year': 2021}
+    f = desjardins_op.barplot(average=True, **kwargs)
+    view.inscribe_dataframe(desjardins_op.get_data(**kwargs))
+    view.display_figure(fig=f, row=0, column=2)
 
     view.start()
 
@@ -100,38 +101,35 @@ if __name__ == '__main__':
     init = True
     # q = queue.Queue()
 
-    csv_parser = CSVParser(desjardins_input_path=args.desjardins_input_path,
-                           desjardins_ppcard_input_path=args.desjardins_ppcard_input_path,
-                           capital_one_input_path=args.capital_one_input_path)
-    grapher = Grapher(accounts=csv_parser.accounts)
-    desjardins_op, desjardins_mc, desjardins_sloan, capital_one, ppcard = csv_parser.get_accounts()
+    desjardins_op, desjardins_mc, desjardins_pr, capital_one, visapp
+
 
     commnands = list()
 
-    commnands.append(Command(['ty'], help_msg='Plot Total Yearly Balance',
-                             name='Total Yearly Balance', method=grapher.plot_year_total, year=2020))
-
-    commnands.append(Command(['udd'], help_msg='Update Desjardins data from new csv files',
-                             name='Update Desjardins data', method=csv_parser.update_desjardins_data))
-    commnands.append(Command(['uco'], help_msg='Update Capital One data from csv files',
-                             name='Update Capital One data', method=csv_parser.update_capital_one_data,
-                             input_path='data/capital_one_csv_files'))
-    commnands.append(Command(['pdy'], help_msg='Plot Desjardins Yearly Balance',
-                             name='Desjardins Yearly Balance', method=grapher.plot_year_desjardins, year=2020))
-    commnands.append(Command(['pcoy'], help_msg='Plot Capital One Yearly Expenses',
-                             name='Capital One Yearly Expenses', method=grapher.plot_year_capital_one, year=2020))
-    commnands.append(Command(['pcoa'], help_msg='Plot Capital One Monthly Expenses',
-                             name='Capital One Monthly Expenses', method=grapher.plot_all_months_capital_one))
-    commnands.append(Command(['pcom'], help_msg='Plot Capital One month balance',
-                             name='Capital One Monthly balance', method=grapher.plot_month_capital_one, month=10))
-    commnands.append(Command(['pmc'], help_msg='Plot Desjardins MC balance',
-                             name='Plot Desjardins MC balance', method=grapher.plot_desjardins_mc))
-    commnands.append(Command(['pop'], help_msg='Plot Desjardins OP balance',
-                             name='Plot Desjrdins OP balance', method=grapher.plot_desjardins_op))
-    commnands.append(Command(['pco'], help_msg='Plot Capital One balance',
-                             name='Plot Capital One balance', method=grapher.plot_capital_one))
-    commnands.append(Command(['s'], help_msg='Save current codes',
-                             name='save', method=csv_parser.save_all_accounts))
+    # commnands.append(Command(['ty'], help_msg='Plot Total Yearly Balance',
+    #                          name='Total Yearly Balance', method=grapher.plot_year_total, year=2020))
+    #
+    # commnands.append(Command(['udd'], help_msg='Update Desjardins data from new csv files',
+    #                          name='Update Desjardins data', method=csv_parser.update_desjardins_data))
+    # commnands.append(Command(['uco'], help_msg='Update Capital One data from csv files',
+    #                          name='Update Capital One data', method=csv_parser.update_capital_one_data,
+    #                          input_path='data/capital_one_csv_files'))
+    # commnands.append(Command(['pdy'], help_msg='Plot Desjardins Yearly Balance',
+    #                          name='Desjardins Yearly Balance', method=grapher.plot_year_desjardins, year=2020))
+    # commnands.append(Command(['pcoy'], help_msg='Plot Capital One Yearly Expenses',
+    #                          name='Capital One Yearly Expenses', method=grapher.plot_year_capital_one, year=2020))
+    # commnands.append(Command(['pcoa'], help_msg='Plot Capital One Monthly Expenses',
+    #                          name='Capital One Monthly Expenses', method=grapher.plot_all_months_capital_one))
+    # commnands.append(Command(['pcom'], help_msg='Plot Capital One month balance',
+    #                          name='Capital One Monthly balance', method=grapher.plot_month_capital_one, month=10))
+    # commnands.append(Command(['pmc'], help_msg='Plot Desjardins MC balance',
+    #                          name='Plot Desjardins MC balance', method=grapher.plot_desjardins_mc))
+    # commnands.append(Command(['pop'], help_msg='Plot Desjardins OP balance',
+    #                          name='Plot Desjrdins OP balance', method=grapher.plot_desjardins_op))
+    # commnands.append(Command(['pco'], help_msg='Plot Capital One balance',
+    #                          name='Plot Capital One balance', method=grapher.plot_capital_one))
+    # commnands.append(Command(['s'], help_msg='Save current codes',
+    #                          name='save', method=csv_parser.save_all_accounts))
     commnands.append(Command(['q'], help_msg='Exit the program',
                              name='quit', method=quit_abacus))
 
