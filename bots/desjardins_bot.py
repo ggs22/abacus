@@ -1,6 +1,7 @@
 #%%
 """
 This scripts automate connection to the web portal (AccesD) of Desjardins for individual users
+and automatically download transcripts and/or conciliation files for divers accounts.
 GGS - ggs8922@gmail.com
 2021-08-07
 """
@@ -27,11 +28,6 @@ options = Options()
 driver = webdriver.Chrome(PATH, options=options)
 
 driver.get('https://www.desjardins.com/')
-
-
-# def _print_step(stp_name: str, stp_ix: int, stp_tot: int, msg: str = ''):
-#     print('######################################################################')
-#     print(f'{stp_name} ({stp_ix}/{stp_tot})' + f' - ' * (msg != '') + msg + '\n')
 
 
 def quit_browser():
@@ -265,9 +261,9 @@ def access_credit_card_management_page():
     driver.get(link.get_attribute('href'))
 
 
-def download_visa_pp_transcript():
+def download_visa_pp_transcript(year: int, month: int):
     """Implement this"""
-    # TODO access conciliation file from credit card manage
+    # TODO access transcript file from credit card manage
 
 
 def download_visa_pp_conciliation():
