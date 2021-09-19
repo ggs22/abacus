@@ -5,8 +5,8 @@ import pandas as pd
 import PIL
 import io
 import tkinter as tk
+import Accounts
 
-from Accounts import Account
 from tkinter import ttk
 # from Grapher import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
@@ -21,6 +21,7 @@ class View:
         self.root = tk.Tk()
         self.root.title('Abacus')
         self.root.geometry('1600x800')
+        self.accounts = Accounts
 
         # set style
         style = ttk.Style(self.root)
@@ -28,7 +29,13 @@ class View:
         style.configure('Treeview', background='#777777', fieldbackground='#777777', foreground='#cccccc',
                         font=(None, _tree_view_font_size))
         style.configure('Button', bg='#777777', fg='#cccccc')
+
+        # initialize widgets
         self.root.configure(background='#777777')
+
+        account_cbox = ttk.Combobox(self.root, width=20)
+        account_cbox.grid(column=0, row=0)
+        account_cbox['values'] = Accounts.accounts.get_names()
 
         self.main_tview = None
 
@@ -67,9 +74,9 @@ class View:
             self.main_tview.insert(parent='', index=tk.END, iid=(row['date'], row['transaction_num']),
                                    values=tuple(row))
 
-        self.main_tview.grid(row=0, column=1, rowspan=50)
+        self.main_tview.grid(row=1, column=0, rowspan=50)
 
     def display_figure(self, fig, row=0, column=0):
         canva = FigureCanvasTkAgg(fig, master=self.root)
         canva.draw()
-        canva.get_tk_widget().grid(row=row, column=column)
+        canva.get_tk_widget().grid(row=row, column=column, rowspan=1)

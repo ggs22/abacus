@@ -103,7 +103,6 @@ if __name__ == '__main__':
 
     desjardins_op, desjardins_mc, desjardins_pr, capital_one, visapp
 
-
     commnands = list()
 
     # commnands.append(Command(['ty'], help_msg='Plot Total Yearly Balance',
