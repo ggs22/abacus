@@ -129,7 +129,6 @@ dmypy.json
 .pyre/
 
 .idea/*
-data/desjardins_csv_files/*
-data/capital_one_csv_files/*
+data/*
 images/
 pickle_objects/
