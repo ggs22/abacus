@@ -20,7 +20,6 @@ from helpers.helpers import print_step, get_project_root
 
 
 def quit_browser():
-    # step 7 - Quit browser
     print_step("Quitting...", 1, 1, f"{driver.current_url}")
     driver.quit()
 
