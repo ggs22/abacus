@@ -1011,6 +1011,8 @@ class PayPal(Account):
 
         cash_flow.drop(index=cash_flow[~((cash_flow['balance'] != 0) & (cash_flow['status'] == 'Completed'))].index,
                        inplace=True)
+
+        # TODO fix this, nan being assign after manual code entry
         cash_flow['code'] = _get_codes(cash_flow)
         l1 = self.transaction_data.shape[0]
         self.transaction_data = self.transaction_data.append(cash_flow)
