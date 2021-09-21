@@ -168,12 +168,9 @@ def download_conciliation():
     b = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.ID, "btnRelevesDocuments")))
     b.click()
 
-    conts = driver.find_elements_by_css_selector("div[class='col-sm-12 col-md-12']")
-    for cont in conts:
-        if cont.text == "Conciliation bancaire":
-            print("found!")
-            cont.click()
-            break
+    link = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "a[class='lien-action'][href='#'][onclick='javascript:creerModaleConciliationBancaire();']")))
+    link.click()
 
     # Step 2 - Download transcripts files
     print_step("Download conciliation", 2, 3, f"Download conciliation files - {driver.current_url}")
@@ -194,27 +191,35 @@ def download_conciliation():
     # set custom time period from the 1st of the current month to current date
     # we set this time period to be all transactions since the begining of the current month since
     # it match the transaction numbers nicely with the official transcripts
-    rbutton = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='radio'][name='chPeriode'][value='PI']")))
+    rbutton = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "input[type='radio'][name='chPeriode'][value='PI']")))
     rbutton.click()
 
-    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text'][name='chDateJourMin'][id='idJour']")))
+    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "input[type='text'][name='chDateJourMin'][id='idJour']")))
     cont.send_keys("1")
 
     day = datetime.datetime.today().day
-    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text'][name='chDateJourMax'][id='idJour']")))
+    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "input[type='text'][name='chDateJourMax'][id='idJour']")))
     cont.send_keys(str(day))
 
     month = datetime.datetime.today().month
-    cbox = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "select[name='chDateMoisMin'][id='idMois']")))
+    cbox = Select(WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "select[name='chDateMoisMin'][id='idMois']"))))
     cbox.select_by_value(f"{month:02}")
 
-    cbox = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "select[name='chDateMoisMax'][id='idMois']")))
+    cbox = Select(WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "select[name='chDateMoisMax'][id='idMois']"))))
     cbox.select_by_value(f"{month:02}")
 
     year = datetime.datetime.today().year
-    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text'][name='chDateAnneeMin'][id='idAnnee']")))
+    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "input[type='text'][name='chDateAnneeMin'][id='idAnnee']")))
     cont.send_keys(f"{year}")
-    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='text'][name='chDateAnneeMax'][id='idAnnee']")))
+
+    cont = WebDriverWait(driver, 5).until(EC.presence_of_element_located(
+        (By.CSS_SELECTOR, "input[type='text'][name='chDateAnneeMax'][id='idAnnee']")))
     cont.send_keys(f"{year}")
 
     rbutton = WebDriverWait(driver, 5).until(EC.presence_of_element_located((By.CSS_SELECTOR, "input[type='radio'][name='chFormat'][value='CSV']")))
@@ -328,8 +333,7 @@ if __name__ == "__main__":
 
     print("Welcome!")
     accessd_login()
-    access_credit_card_management_page()
-    download_visa_pp_conciliation()
+    download_conciliation()
 
-    # input("Press any key to quit...")
-    # quit_browser()
+    input("Press any key to quit...")
+    quit_browser()

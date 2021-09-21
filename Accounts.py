@@ -168,6 +168,10 @@ class Account(ABC):
         self.most_recent_date = self.transaction_data.tail(n=1).date
         self.planned_transactions = self._load_planned_transactions()
 
+    def __getitem__(self, item):
+        ret = self.transaction_data.loc[item, :]
+        return ret
+
     def get_data_by_date(self, year=None, month=None, day=None) -> pd.DataFrame:
 
         res = self.transaction_data
@@ -289,10 +293,12 @@ class Account(ABC):
         return s
 
     def change_transaction_code(self, ix, code):
-        if ix in self.transaction_data.index:
-            self.transaction_data.loc[ix, 'code'] = code
-        else:
-            raise ValueError(f'{ix} is not present in transaction data\'s index for {self.get_name()} account')
+        self.transaction_data.loc[ix, 'code'] = code
+
+    def apply_description_filter(self, pattern: str, regex=False):
+        ret = self.transaction_data.loc[
+              self.transaction_data["description"].str.contains("Paiement /PAYPAL", regex=True), :]
+        return ret
 
     @abstractmethod
     def update_from_raw_files(self):
