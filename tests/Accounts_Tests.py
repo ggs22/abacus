@@ -13,6 +13,5 @@ for acc in accounts:
     print(acc.most_recent_date)
 
 
-#%%
 desjardins_op.apply_description_filter(pattern=r"[Pp][Aa][Yy][Pp][Aa][Ll]", regex=True)
 desjardins_op[0]
