@@ -37,12 +37,13 @@ class AccountType(Enum):
 
 @dataclass
 class AccountMetadata:
-    raw_files_path: str
+    raw_files_dir: str
     serialized_object_path: str
     planned_transactions_path: str
     interest_rate: float
     name: AccountNames
     columns_names: list
+    # unique_keys: list
     type: AccountType
     status: AccountStatus
 
@@ -150,22 +151,12 @@ def _is_planned_transaction(year: int, month: int, day: int, date: datetime.date
 
 class Account(ABC):
     def __init__(self, lmetadata: AccountMetadata):
-        df = None
+
         self.metadata = lmetadata
-        if os.path.exists(self.metadata.serialized_object_path):
-            with open(self.metadata.serialized_object_path, 'rb') as save_file:
-                df = pickle.load(save_file)
-
-        elif os.path.exists(self.metadata.raw_files_path):
-            df = self._load_from_raw_files()
-
-        if df is None:
-            raise FileNotFoundError(f'No serialized or raw data (in {self.metadata.raw_files_path}) was found for '
-                                    f'{self.metadata.name}')
-        else:
-            self.transaction_data = df
-
-        self.most_recent_date = self.transaction_data.tail(n=1).date
+        self.transaction_data = None
+        self._load_from_raw_files()
+        if self.transaction_data is not None:
+            self.most_recent_date = self.transaction_data.tail(n=1).date
         self.planned_transactions = self._load_planned_transactions()
 
     def __getitem__(self, item):
@@ -215,34 +206,72 @@ class Account(ABC):
         d = self.get_data(year=year, month=month, day=day)
         return d.loc[d['code'] == code]
 
-    def _load_from_raw_files(self) -> pd.DataFrame:
+    def _load_from_raw_files(self, update_data=False) -> None:
         # TODO keep a record of processed raw files as to avoid reprocessing them in updates
+        df = None
+        if os.path.exists(self.metadata.serialized_object_path) and not update_data:
+            with open(self.metadata.serialized_object_path, 'rb') as save_file:
+                df = pickle.load(save_file)
 
-        if self.metadata.raw_files_path == '':
-            raise ValueError('please specify a path for Desjardins CSV files')
+        elif os.path.exists(self.metadata.raw_files_dir):
+            if not update_data:
+                cash_flow = pd.DataFrame(columns=self.metadata.columns_names)
+            else:
+                cash_flow = self.transaction_data
+                if cash_flow is None:
+                    cash_flow = pd.DataFrame(columns=self.metadata.columns_names)
 
-        csv_files = os.listdir(self.metadata.raw_files_path)
-        if self.transaction_data is None:
-            cash_flow = pd.DataFrame(columns=self.metadata.columns_names)
+            csv_files = os.listdir(self.metadata.raw_files_dir)
+            for x in csv_files:
+                if x[-4:] == '.csv':
+                    cash_flow = cash_flow.append(
+                        pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
+                                    encoding='latin1',
+                                    names=self.metadata.columns_names),
+                        ignore_index=True)
+
+            # Convert strings to actual date time objects
+            if 'date' in cash_flow.columns:
+                cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%Y-%m-%d')
+
+            # Adds column,and inputs transaction code
+            cash_flow['code'] = _get_codes(cash_flow)
+            cash_flow = cash_flow.replace(np.nan, 0)
+            cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'])
+
+            df = cash_flow
+
+        if df is None:
+            raise FileNotFoundError(f'No serialized or raw data (in {self.metadata.raw_files_dir}) was found for '
+                                    f'{self.metadata.name}')
         else:
-            cash_flow = self.transaction_data
-        for x in csv_files:
-            if x[-4:] == '.csv':
-                cash_flow = cash_flow.append(
-                    pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
-                                encoding='latin1',
-                                names=self.metadata.columns_names),
-                    ignore_index=True)
+            self.transaction_data = df
 
-        # Convert strings to actual date time objects
-        if 'date' in cash_flow.columns:
-            cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%Y-%m-%d')
-
-        # Adds column,and inputs transaction code
-        cash_flow['code'] = _get_codes(cash_flow)
-        cash_flow = cash_flow.replace(np.nan, 0)
-
-        return cash_flow
+        # if self.metadata.raw_files_dir == '':
+        #     raise ValueError('please specify a path for Desjardins CSV files')
+        #
+        # csv_files = os.listdir(self.metadata.raw_files_dir)
+        # if self.transaction_data is None:
+        #     cash_flow = pd.DataFrame(columns=self.metadata.columns_names)
+        # else:
+        #     cash_flow = self.transaction_data
+        # for x in csv_files:
+        #     if x[-4:] == '.csv':
+        #         cash_flow = cash_flow.append(
+        #             pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
+        #                         encoding='latin1',
+        #                         names=self.metadata.columns_names),
+        #             ignore_index=True)
+        #
+        # # Convert strings to actual date time objects
+        # if 'date' in cash_flow.columns:
+        #     cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%Y-%m-%d')
+        #
+        # # Adds column,and inputs transaction code
+        # cash_flow['code'] = _get_codes(cash_flow)
+        # cash_flow = cash_flow.replace(np.nan, 0)
+        #
+        # return cash_flow
 
     def _load_planned_transactions(self) -> pd.DataFrame:
         df = None
@@ -328,10 +357,10 @@ class DesjardinsOP(Account):
 
     def update_from_raw_files(self):
         new_entries = 0
-        csv_files = os.listdir(self.metadata.raw_files_path)
+        csv_files = os.listdir(self.metadata.raw_files_dir)
         for x in csv_files:
             if x[-4:] == '.csv':
-                new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
+                new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
                                   encoding='latin1',
                                   names=self.metadata.columns_names)
                 for ix, row in new.iterrows():
@@ -425,10 +454,10 @@ class DesjardinsMC(Account):
 
     def update_from_raw_files(self):
         new_entries = 0
-        csv_files = os.listdir(self.metadata.raw_files_path)
+        csv_files = os.listdir(self.metadata.raw_files_dir)
         for x in csv_files:
             if x[-4:] == '.csv':
-                new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
+                new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
                                   encoding='latin1',
                                   names=self.metadata.columns_names)
                 for ix, row in new.iterrows():
@@ -569,10 +598,10 @@ class DesjardinsPR(Account):
 
     def update_from_raw_files(self):
         new_entries = 0
-        csv_files = os.listdir(self.metadata.raw_files_path)
+        csv_files = os.listdir(self.metadata.raw_files_dir)
         for x in csv_files:
             if x[-4:] == '.csv':
-                new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
+                new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
                                   encoding='latin1',
                                   names=self.metadata.columns_names)
                 for ix, row in new.iterrows():
@@ -628,15 +657,9 @@ class VisaPP(Account):
         super().__init__(lmetadata=lmetadata)
         self.col_mask = ['date', 'transaction_num', 'description', 'credit/payment', 'balance', 'code']
 
-    def _load_from_raw_files(self) -> pd.DataFrame:
-        """
-            This function returns an aggloromated dataframe from dejardins prepard credit card pdf files
-            args:
-                - input_path        location of pdf files to be agglomerated
-            """
-
+    def _load_from_raw_pdf_files(self) -> pd.DataFrame:
         # pdf_files = Path(input_path).glob('*.pdf')
-        pdf_files = os.listdir(self.metadata.raw_files_path)
+        pdf_files = os.listdir(self.metadata.raw_files_dir)
 
         # Desjardins ppcard pdf files columns names
         lnames = ['date', 'transaction_num', 'description', 'credit/payment']
@@ -645,7 +668,7 @@ class VisaPP(Account):
         suffix1 = '_processed.txt'
         for x in pdf_files:
             if x[-len(suffix1):] == suffix1:
-                tot_df = pd.read_csv(os.path.join(self.metadata.raw_files_path, x),
+                tot_df = pd.read_csv(os.path.join(self.metadata.raw_files_dir, x),
                                      sep=';',
                                      encoding='utf-8',
                                      names=lnames,
@@ -659,9 +682,9 @@ class VisaPP(Account):
                 payments = tot_df[mid_index + 1:end_index].copy()
 
                 expenses.loc[:, 'transaction_num'] = expenses.loc[:, 'transaction_num'].apply(
-                    lambda i: str(int(i)) + 'e')
+                    lambda li: str(int(li)) + 'e')
                 payments.loc[:, 'transaction_num'] = payments.loc[:, 'transaction_num'].apply(
-                    lambda i: str(int(i)) + 'p')
+                    lambda li: str(int(li)) + 'p')
 
                 cash_flow = cash_flow.append(expenses, ignore_index=True)
                 cash_flow = cash_flow.append(payments, ignore_index=True)
@@ -669,7 +692,7 @@ class VisaPP(Account):
             elif x[-4:] == '.txt':
                 # TODO make this snippet more elegant
                 tnumber_prefixes, ix = ['e', 'p'], 0
-                with open(os.path.join(self.metadata.raw_files_path, x), 'r') as raw_file:
+                with open(os.path.join(self.metadata.raw_files_dir, x), 'r') as raw_file:
                     for i, line in enumerate(raw_file):
                         print(line)
                         if line.find('Date de transaction') == 0:
@@ -696,8 +719,7 @@ class VisaPP(Account):
                                                              ignore_index=True)
                             ix += 1
             elif x[-4:] == '.csv':
-                tnumber_prefixes, ix = ['e', 'p'], 0
-                df = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
+                df = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
                                  encoding='latin1',
                                  names=self.metadata.columns_names)
                 df.dropna(axis=1, how='all', inplace=True)
@@ -708,8 +730,6 @@ class VisaPP(Account):
                 df.replace(np.nan, 0, inplace=True)
                 df['payment/credit'] = df['payment/credit'] - df['credit']
                 df.drop(columns=['acc_name', 'credit'], inplace=True)
-
-                os
 
         # Adds column,and inputs transaction code
         cash_flow = cash_flow.replace(np.nan, 0)
@@ -734,62 +754,13 @@ class VisaPP(Account):
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
 
+    # TODO implement update method for VISA pp credit card
     def update_from_raw_files(self):
         pass
-        # new_entries = 0
-        # csv_files = os.listdir(self.metadata.raw_files_path)
-        # for x in csv_files:
-        #     if x[-4:] == '.csv':
-        #         new = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
-        #                           encoding='latin1',
-        #                           names=self.metadata.columns_names)
-        #         for ix, row in new.iterrows():
-        #
-        #             if (row['date'], row['transaction_num']) in self.transaction_data.set_index(
-        #                     keys=['date', 'transaction_num']).index:
-        #                 continue
-        #             else:
-        #                 if row['account'] == 'PR1':
-        #                     row['date'] = pd.to_datetime(row['date'], format='%Y-%m-%d')
-        #                     row['code'] = _get_codes(pd.DataFrame(row).T).values[0]
-        #                     row.replace(np.nan, 0, inplace=True)
-        #                     self.transaction_data.append(other=row, ignore_index=True)
-        #                     new_entries += 1
 
-        # if new_entries > 0:
-        #     self.transaction_data.drop_duplicates(keep='first', subset=self.metadata.columns_names, inplace=True)
-        #     self.transaction_data.sort_values(by=['date', 'transaction_num'], inplace=True)
-        #
-        #     print(f'{new_entries} new entries added')
-        #     if self._save_prompt():
-        #         self.to_pickle()
-
+    # TODO implement prediction method
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
         df = self.get_data()
-        # TODO implement prediction method
-        # if self.planned_transactions is not None:
-        #     template = df.iloc[0, :].copy(deep=True)
-        #     bal = self.get_current_balance()
-        #     for d in range(0, days):
-        #         date = (datetime.datetime.today().date() + timedelta(days=d))
-        #         for ix, ptransaction in self.planned_transactions.iterrows():
-        #             if _is_planned_transaction(year=ptransaction['year'],
-        #                                        month=ptransaction['month'],
-        #                                        day=ptransaction['day'],
-        #                                        date=date):
-        #                 template.loc['date'] = date
-        #                 template['transaction_num'] = 'na'
-        #                 template['description'] = ptransaction['description']
-        #                 template['paid_capital'] = ptransaction['withdrawal']
-        #                 template['reimboursment'] = ptransaction['deposit']
-        #                 template['balance'] = bal + ptransaction['paid_capital'] - ptransaction['reimboursment']
-        #                 template['code'] = 'planned'
-        #                 df = df.append(other=template, ignore_index=True)
-        #                 df.sort_values(by=['date', 'transaction_num'], inplace=True)
-        #
-        #                 bal = template['balance']
-        # else:
-        #     df = None
         return df
 
 
@@ -798,78 +769,11 @@ class CapitalOne(Account):
         super().__init__(lmetadata=lmetadata)
         self.col_mask = ['date', 'description', 'debit', 'credit', 'code']
 
-    def _load_from_raw_files(self) -> pd.DataFrame:
-
-        # pdf_files = Path(input_path).glob('*.pdf')
-        pdf_files = os.listdir(self.metadata.raw_files_path)
-
-        # Desjardins ppcard pdf files columns names
-        names = ['date', 'transaction_num', 'description', 'credit/payment']
-        cash_flow = pd.DataFrame(columns=names)
-
-        suffix1 = '_processed.txt'
-        for x in pdf_files:
-            if x[-len(suffix1):] == suffix1:
-                tot_df = pd.read_csv(os.path.join(self.metadata.raw_files_path, x),
-                                     sep=';',
-                                     encoding='utf-8',
-                                     names=names,
-                                     header=None)
-                start_index = tot_df[tot_df['date'] == 'Jour'].index[0] + 1
-                mid_index = tot_df[tot_df['date'] == 'Total'].index[0]
-                end_index = tot_df[tot_df['date'] == 'SOLDE PRÉCÉDENT'].index[0]
-                year = int(tot_df.iloc[1, 1])
-
-                expenses = tot_df[start_index:mid_index].copy()
-                payments = tot_df[mid_index + 1:end_index].copy()
-
-                expenses.loc[:, 'transaction_num'] = expenses.loc[:, 'transaction_num'].apply(
-                    lambda i: str(int(i)) + 'e')
-                payments.loc[:, 'transaction_num'] = payments.loc[:, 'transaction_num'].apply(
-                    lambda i: str(int(i)) + 'p')
-
-                cash_flow = cash_flow.append(expenses, ignore_index=True)
-                cash_flow = cash_flow.append(payments, ignore_index=True)
-
-            elif x[-4:] == '.txt':
-                # TODO make this snippet more elegant
-                tnumber_prefixes, ix = ['e', 'p'], 0
-                with open(os.path.join(self.metadata.raw_files_path, x), 'r') as raw_file:
-                    for i, line in enumerate(raw_file):
-                        print(line)
-                        if line.find('Date de transaction') == 0:
-                            for t in raw_file:
-                                if t.find('Total :') == 0 or t.find('nullDétail') == 0 or t.find('\n') == 0:
-                                    break
-                                res = t.split(sep='\t')
-                                res[0] = res[0].replace('JUI', 'JUL')
-                                res[0] = res[0].replace('MAI', 'MAY')
-                                date = pd.to_datetime(res[0])
-                                t_number = res[4].replace('0', '')
-                                t_number = t_number + tnumber_prefixes[ix]
-                                description = res[7]
-                                transaction = res[8 + ix]
-                                r1 = re.compile(pattern='^([0-9]+),([0-9]{1,2})')
-                                r2 = re.compile(pattern='^CR ([0-9]+),([0-9]{1,2})')
-                                transaction = r1.sub(repl=r'-\1.\2', string=transaction)
-                                transaction = r2.sub(repl=r'\1.\2', string=transaction)
-                                cash_flow = cash_flow.append(other=pd.Series([date,
-                                                                              t_number,
-                                                                              description,
-                                                                              transaction],
-                                                                             index=names),
-                                                             ignore_index=True)
-                            ix += 1
-
-        # Adds column,and inputs transaction code
-        cash_flow = cash_flow.replace(np.nan, 0)
-        cash_flow['date'] = pd.to_datetime(cash_flow['date'])
-        cash_flow.sort_values(by=['date', 'transaction_num'], ascending=True, inplace=True)
-        cash_flow['credit/payment'] = pd.to_numeric(cash_flow['credit/payment'])
-        cash_flow['balance'] = cash_flow['credit/payment'].cumsum()
-        cash_flow['code'] = _get_codes(cash_flow)
-
-        return cash_flow
+    def _load_from_raw_files(self, update_data=False) -> None:
+        if update_data is True:
+            print(f"This account is {self.metadata.status}, impossible to add transaction data!")
+            print(f"update_data = {update_data}")
+        super()._load_from_raw_files(update_data=update_data)
 
     def get_summed_data(self, year=None, month=None, day=None):
         d = self.get_data(year=year, month=month, day=day)
@@ -893,64 +797,62 @@ class PayPal(Account):
         super().__init__(lmetadata=lmetadata)
         self.col_mask = ['date', 'description', 'currency', 'amount', 'balance', 'code']
 
-    def _load_from_raw_files(self) -> pd.DataFrame:
-
-        # TODO keep a record of processed raw files as to avoid reprocessing them in updates
-
-        if self.metadata.raw_files_path == '':
-            raise ValueError('please specify a path for Desjardins CSV files')
-
-        csv_files = os.listdir(self.metadata.raw_files_path)
-        cash_flow = pd.DataFrame()
-        for x in csv_files:
-            if x[-4:].lower() == '.csv':
-                cash_flow = cash_flow.append(
-                    pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
-                                encoding='latin1'),
-                    ignore_index=True)
-
-        # Convert strings to actual date time objects
-        cash_flow.columns = ['date', *cash_flow.columns[1:].str.lower()]
-        if 'date' in cash_flow.columns:
-            cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%d/%m/%Y')
-        cash_flow.sort_values(by=['date'], inplace=True)
-
-        # Adds column,and inputs transaction code
-        cash_flow.insert(loc=5,
-                         column='description',
-                         value=cash_flow['name'].replace(np.nan, 'NA') + ' - ' + cash_flow['type'])
-        cash_flow.drop(columns=['name', 'type'], inplace=True)
-        cash_flow = cash_flow.replace(np.nan, 0)
-
-        for ix, row in cash_flow.iterrows():
-            if row['status'] == 'Completed' and row['currency'] != 'CAD' and row['balance'] != 0:
-                if cash_flow.loc[ix + 1, 'status'] == 'Pending':
-                    cash_flow.loc[ix, 'amount'] = -cash_flow.loc[ix + 1, 'amount']
-                    cash_flow.loc[ix, 'balance'] = -cash_flow.loc[ix + 1, 'balance']
-                else:
-                    cash_flow.loc[ix, 'amount'] = np.sign(cash_flow.loc[ix, 'amount']) * abs(
-                        cash_flow.loc[ix + 1, 'amount'])
-                    cash_flow.loc[ix, 'balance'] = np.sign(cash_flow.loc[ix, 'amount']) * abs(
-                        cash_flow.loc[ix + 1, 'balance'])
-                cash_flow.loc[ix, 'currency'] = 'CAD'
-            elif row['status'] == 'Completed' \
-                    and row['description'][-len('Express Checkout Payment'):] == 'Express Checkout Payment' \
-                    and row['currency'] == 'CAD' \
-                    and row['balance'] == 0:
-                cash_flow.loc[ix, 'balance'] = cash_flow.loc[ix, 'amount']
-            elif row['status'] == 'Completed' \
-                    and (row['description'] == 'NA - General Credit Card Deposit' or
-                         row['description'] == 'NA - Reversal of ACH Deposit') \
-                    and row['balance'] != 0:
-                cash_flow.loc[ix, 'balance'] = 0
-
-        cash_flow.drop_duplicates(inplace=True)
-        cash_flow.drop(index=cash_flow[~((cash_flow['balance'] != 0) & (cash_flow['status'] == 'Completed'))].index,
-                       inplace=True)
-        cash_flow.reset_index(inplace=True, drop=True)
-        cash_flow['code'] = _get_codes(cash_flow)
-
-        return cash_flow
+    # TODO refactor to load data in parent class and process it
+    # def _load_from_raw_files(self) -> pd.DataFrame:
+    #     if self.metadata.raw_files_dir == '':
+    #         raise ValueError('please specify a path for Desjardins CSV files')
+    #
+    #     csv_files = os.listdir(self.metadata.raw_files_dir)
+    #     cash_flow = pd.DataFrame()
+    #     for x in csv_files:
+    #         if x[-4:].lower() == '.csv':
+    #             cash_flow = cash_flow.append(
+    #                 pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
+    #                             encoding='latin1'),
+    #                 ignore_index=True)
+    #
+    #     # Convert strings to actual date time objects
+    #     cash_flow.columns = ['date', *cash_flow.columns[1:].str.lower()]
+    #     if 'date' in cash_flow.columns:
+    #         cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%d/%m/%Y')
+    #     cash_flow.sort_values(by=['date'], inplace=True)
+    #
+    #     # Adds column,and inputs transaction code
+    #     cash_flow.insert(loc=5,
+    #                      column='description',
+    #                      value=cash_flow['name'].replace(np.nan, 'NA') + ' - ' + cash_flow['type'])
+    #     cash_flow.drop(columns=['name', 'type'], inplace=True)
+    #     cash_flow = cash_flow.replace(np.nan, 0)
+    #
+    #     for ix, row in cash_flow.iterrows():
+    #         if row['status'] == 'Completed' and row['currency'] != 'CAD' and row['balance'] != 0:
+    #             if cash_flow.loc[ix + 1, 'status'] == 'Pending':
+    #                 cash_flow.loc[ix, 'amount'] = -cash_flow.loc[ix + 1, 'amount']
+    #                 cash_flow.loc[ix, 'balance'] = -cash_flow.loc[ix + 1, 'balance']
+    #             else:
+    #                 cash_flow.loc[ix, 'amount'] = np.sign(cash_flow.loc[ix, 'amount']) * abs(
+    #                     cash_flow.loc[ix + 1, 'amount'])
+    #                 cash_flow.loc[ix, 'balance'] = np.sign(cash_flow.loc[ix, 'amount']) * abs(
+    #                     cash_flow.loc[ix + 1, 'balance'])
+    #             cash_flow.loc[ix, 'currency'] = 'CAD'
+    #         elif row['status'] == 'Completed' \
+    #                 and row['description'][-len('Express Checkout Payment'):] == 'Express Checkout Payment' \
+    #                 and row['currency'] == 'CAD' \
+    #                 and row['balance'] == 0:
+    #             cash_flow.loc[ix, 'balance'] = cash_flow.loc[ix, 'amount']
+    #         elif row['status'] == 'Completed' \
+    #                 and (row['description'] == 'NA - General Credit Card Deposit' or
+    #                      row['description'] == 'NA - Reversal of ACH Deposit') \
+    #                 and row['balance'] != 0:
+    #             cash_flow.loc[ix, 'balance'] = 0
+    #
+    #     cash_flow.drop_duplicates(inplace=True)
+    #     cash_flow.drop(index=cash_flow[~((cash_flow['balance'] != 0) & (cash_flow['status'] == 'Completed'))].index,
+    #                    inplace=True)
+    #     cash_flow.reset_index(inplace=True, drop=True)
+    #     cash_flow['code'] = _get_codes(cash_flow)
+    #
+    #     return cash_flow
 
     def get_summed_data(self, year=None, month=None, day=None):
         d = self.get_data(year=year, month=month, day=day)
@@ -962,15 +864,15 @@ class PayPal(Account):
         return d
 
     def update_from_raw_files(self):
-        if self.metadata.raw_files_path == '':
+        if self.metadata.raw_files_dir == '':
             raise ValueError('please specify a path for Desjardins CSV files')
 
-        csv_files = os.listdir(self.metadata.raw_files_path)
+        csv_files = os.listdir(self.metadata.raw_files_dir)
         cash_flow = pd.DataFrame()
         for x in csv_files:
             if x[-4:].lower() == '.csv':
-                df = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_path, x),
-                                encoding='latin1')
+                df = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
+                                 encoding='latin1')
                 df.drop(labels=0, inplace=True)
                 cash_flow = cash_flow.append(df, ignore_index=True)
 
@@ -1011,7 +913,8 @@ class PayPal(Account):
 
         cash_flow.drop(index=cash_flow[~((cash_flow['balance'] != 0) & (cash_flow['status'] == 'Completed'))].index,
                        inplace=True)
-
+        cash_flow.reset_index(inplace=True, drop=True)
+        print("this and then some...")
         # TODO fix this, nan being assign after manual code entry
         cash_flow['code'] = _get_codes(cash_flow)
         l1 = self.transaction_data.shape[0]
@@ -1026,32 +929,9 @@ class PayPal(Account):
                 self.to_pickle()
             self.to_pickle()
 
+    # TODO implement prediction method
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
         df = self.get_data()
-        # TODO implement prediction method
-        # if self.planned_transactions is not None:
-        #     template = df.iloc[0, :].copy(deep=True)
-        #     bal = self.get_current_balance()
-        #     for d in range(0, days):
-        #         date = (datetime.datetime.today().date() + timedelta(days=d))
-        #         for ix, ptransaction in self.planned_transactions.iterrows():
-        #             if _is_planned_transaction(year=ptransaction['year'],
-        #                                        month=ptransaction['month'],
-        #                                        day=ptransaction['day'],
-        #                                        date=date):
-        #                 template.loc['date'] = date
-        #                 template['transaction_num'] = 'na'
-        #                 template['description'] = ptransaction['description']
-        #                 template['paid_capital'] = ptransaction['withdrawal']
-        #                 template['reimboursment'] = ptransaction['deposit']
-        #                 template['balance'] = bal + ptransaction['paid_capital'] - ptransaction['reimboursment']
-        #                 template['code'] = 'planned'
-        #                 df = df.append(other=template, ignore_index=True)
-        #                 df.sort_values(by=['date', 'transaction_num'], inplace=True)
-        #
-        #                 bal = template['balance']
-        # else:
-        #     df = None
         return df
 
 
@@ -1086,7 +966,7 @@ class Accounts:
             d = d.groupby(by='code').sum()
         return d
 
-    def barplot(self, year=None, month=None, day=None, show=False, figsize=(7, 7), average: bool = False):
+    def barplot(self, year=None, month=None, day=None, show=False, average: bool = False):
 
         if not average:
             d = self.get_summed_data(year=year, month=month, day=day)
@@ -1128,13 +1008,14 @@ pickle_dir = os.path.join(base_dir, 'pickle_objects')
 names = ['branch', 'foliot', 'account', 'date', 'transaction_num', 'description', 'fees', 'withdrawal', 'deposit',
          'interests', 'capital_paid', 'advance', 'reimboursment', 'balance']
 
-metadata = AccountMetadata(raw_files_path=os.path.join(data_dir, 'desjardins_csv_files'),
+metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_files'),
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_op.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.csv'),
                            interest_rate=0,
                            name=AccountNames.DESJARDINS_OP,
                            columns_names=names,
+                           # unique_keys=['date', 'transaction_num'],
                            type=AccountType.OPERATIONS,
                            status=AccountStatus.OPEN)
 desjardins_op = DesjardinsOP(lmetadata=metadata)
@@ -1142,13 +1023,14 @@ desjardins_op = DesjardinsOP(lmetadata=metadata)
 # ==============
 # Desjardins MC
 # ==============
-metadata = AccountMetadata(raw_files_path=os.path.join(data_dir, 'desjardins_csv_files'),
+metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_files'),
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_mc.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.csv'),
                            interest_rate=0.0295,
                            name=AccountNames.DESJARDINS_MC,
                            columns_names=names,
+                           # unique_keys=['date', 'transaction_num'],
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_mc = DesjardinsMC(lmetadata=metadata)
@@ -1156,13 +1038,14 @@ desjardins_mc = DesjardinsMC(lmetadata=metadata)
 # ==============
 # Desjardins PR
 # ==============
-metadata = AccountMetadata(raw_files_path=os.path.join(data_dir, 'desjardins_csv_files'),
+metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_files'),
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_pr.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.pkl'),
                            interest_rate=0.045,
                            name=AccountNames.DESJARDINS_PR,
                            columns_names=names,
+                           # unique_keys=['date', 'transaction_num'],
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_pr = DesjardinsPR(lmetadata=metadata)
@@ -1172,7 +1055,7 @@ desjardins_pr = DesjardinsPR(lmetadata=metadata)
 # ==============
 names = ['acc_name', 'unknown1', 'unknown2',  'date', 'transaction_num', 'description', 'unknown6', 'unknown7',
          'unknown8', 'unknown9', 'unknown10', 'payment/credit',  'credit', 'unknown13']
-metadata = AccountMetadata(raw_files_path=os.path.join(data_dir, 'desjardins_ppcard_pdf_files'),
+metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_ppcard_csv_files'),
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_ppcard.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.pkl'),
@@ -1187,7 +1070,7 @@ visapp = VisaPP(lmetadata=metadata)
 # Capital One
 # ==============
 names = ['date', 'posted_date', 'card_num', 'description', 'category', 'debit', 'credit']
-metadata = AccountMetadata(raw_files_path=os.path.join(data_dir, 'capital_one_csv_files'),
+metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'capital_one_csv_files'),
                            serialized_object_path=os.path.join(pickle_dir, 'capital_one.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.pkl'),
@@ -1202,7 +1085,7 @@ capital_one = CapitalOne(lmetadata=metadata)
 # PayPal
 # ==============
 names = ['Date', 'Time', 'TimeZone', 'Name', 'description', 'Status', 'Currency', 'Amount', 'Receipt ID', 'Balance']
-metadata = AccountMetadata(raw_files_path=os.path.join(data_dir, 'paypal_csv_files'),
+metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'paypal_csv_files'),
                            serialized_object_path=os.path.join(pickle_dir, 'paypal.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.pkl'),

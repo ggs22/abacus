@@ -8,7 +8,7 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.chrome.options import Options
 from getpass import getpass
 
-from helpers.helpers import print_step, get_project_root, get_css_selector_from_firefox
+from helpers.helpers import print_step, get_project_root, get_css_selector_from_html
 
 
 def quit_browser():
@@ -109,5 +109,5 @@ if __name__ == "__main__":
     paypal_login()
     download_custom_report()
 
-    # input("Press any key to quit...")
-    # quit_browser()
+    input("Press any key to quit...")
+    quit_browser()

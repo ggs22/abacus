@@ -309,7 +309,7 @@ def download_visa_pp_conciliation():
         print_step("Download visa conciliation", 5, 5, f"saving text to csv - {driver.current_url}")
         table = driver.find_element_by_tag_name("pre")
 
-        dest_dir = os.path.join(get_project_root(), "data/desjardins_ppcard_pdf_files/")
+        dest_dir = os.path.join(get_project_root(), "data/desjardins_ppcard_csv_files/")
         dest_path = os.path.join(dest_dir, "conciliation.csv")
         if os.path.exists(dest_path):
             os.remove(dest_path)
@@ -333,7 +333,10 @@ if __name__ == "__main__":
 
     print("Welcome!")
     accessd_login()
-    download_conciliation()
+    # download_conciliation()
+    download_visa_pp_transcript(year=2021, month=9)
+    # access_credit_card_management_page()
+    # download_visa_pp_conciliation()
 
     input("Press any key to quit...")
     quit_browser()

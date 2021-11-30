@@ -1,6 +1,9 @@
 #%%
 from Accounts import *
 
+
+#%%
+
 # for year in [2019, 2020, 2021]:
 #     accounts.barplot(year=year, show=True)
     # account.get_summed_data(year=year)
@@ -8,10 +11,11 @@ from Accounts import *
     # account.barplot(year=year, average=True, show=True)
 
 
-for acc in accounts:
-    print(acc.metadata.name.name)
-    print(acc.most_recent_date)
+paypal.update_from_raw_files()
+# for acc in accounts:
+#     print(acc.metadata.name.name)
+#     print(acc.most_recent_date)
 
 
-desjardins_op.apply_description_filter(pattern=r"[Pp][Aa][Yy][Pp][Aa][Ll]", regex=True)
-desjardins_op[0]
+# desjardins_op.apply_description_filter(pattern=r"[Pp][Aa][Yy][Pp][Aa][Ll]", regex=True)
+# desjardins_op[0]

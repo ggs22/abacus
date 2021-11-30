@@ -75,7 +75,7 @@ def parse_arguments():
     parser.add_argument('-i', '--desjardins_input_path', type=str, help='Choose the input csv files path',
                         required=False, default='./desjardins_csv_files')
     parser.add_argument('-p', '--desjardins_ppcard_input_path', type=str, help='Choose the input csv files path',
-                        required=False, default='./desjardins_ppcard_pdf_files')
+                        required=False, default='./desjardins_ppcard_csv_files')
     parser.add_argument('-c', '--capital_one_input_path', type=str, help='Choose the input csv files path',
                         required=False, default='./capital_one_csv_files')
 
