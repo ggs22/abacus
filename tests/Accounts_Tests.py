@@ -13,7 +13,4 @@ from Accounts import *
 #     print(acc.most_recent_date)
 
 #%%
-tst = desjardins_mc.get_predicted_balance()
-
-# desjardins_op.apply_description_filter(pattern=r"[Pp][Aa][Yy][Pp][Aa][Ll]", regex=True)
-# desjardins_op[0]
+capital_one.update_from_raw_files()

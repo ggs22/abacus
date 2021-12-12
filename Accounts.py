@@ -480,14 +480,20 @@ class DesjardinsMC(Account):
             if self._save_prompt():
                 self.to_pickle()
 
-    def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
+    def get_predicted_balance(self, days: int = 91, sim_date: datetime.date = None) -> pd.DataFrame:
         df = self.get_data().copy()
-        idate = pd.to_datetime(df.tail(1)['date'].values).date
+
+        if sim_date is None:
+            idate = pd.to_datetime(df.tail(1)['date'].values).date[0]
+        else:
+            idate = sim_date
+            df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
+
         if self.planned_transactions is not None:
             template = df.iloc[0, :].copy(deep=True)
             bal = self.get_current_balance()
             for d in range(1, days):
-                date = (idate + timedelta(days=d))[0]
+                date = (idate + timedelta(days=d))
                 for ix, ptransaction in self.planned_transactions.iterrows():
                     if _is_planned_transaction(year=ptransaction['year'],
                                                month=ptransaction['month'],
@@ -770,9 +776,6 @@ class CapitalOne(Account):
         self.col_mask = ['date', 'description', 'debit', 'credit', 'code']
 
     def _load_from_raw_files(self, update_data=False) -> None:
-        if update_data is True:
-            print(f"This account is {self.metadata.status}, impossible to add transaction data!")
-            print(f"update_data = {update_data}")
         super()._load_from_raw_files(update_data=update_data)
 
     def get_summed_data(self, year=None, month=None, day=None):
@@ -786,7 +789,41 @@ class CapitalOne(Account):
         return d
 
     def update_from_raw_files(self):
-        pass
+        cash_flow = self.transaction_data
+        old_entries_num = cash_flow.shape[0]
+        if cash_flow is None:
+            cash_flow = pd.DataFrame(columns=self.metadata.columns_names)
+
+        csv_files = os.listdir(self.metadata.raw_files_dir)
+        for x in csv_files:
+            if x[-4:] == '.csv':
+                tmp_df = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
+                                     encoding='latin1',
+                                     names=self.metadata.columns_names)
+                tmp_df.drop(labels=[0], inplace=True)
+                tmp_df.drop(columns=['posted_date'], inplace=True)
+                cash_flow = cash_flow.append(tmp_df, ignore_index=True)
+
+        # Convert strings to actual date time objects
+        if 'date' in cash_flow.columns:
+            cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%Y-%m-%d')
+
+        # Adds column,and inputs transaction code
+        cash_flow = cash_flow.replace(np.nan, 0)
+        cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
+        cash_flow.sort_values(by=['date'], inplace=True)
+        cash_flow.reset_index(inplace=True, drop=True)
+        # tst = _get_codes(cash_flow[cash_flow['code'] == 0])
+        # cash_flow.iloc[cash_flow['code'] == 0, 'code'] = tst
+        for ix, row in cash_flow[cash_flow['code'] == 0].iterrows():
+            cash_flow.loc[ix, 'code'] = _get_codes(pd.DataFrame(row).T).values[0]
+
+        new_entries = cash_flow.shape[0] - old_entries_num
+        if new_entries > 0:
+            self.transaction_data = cash_flow
+            print(f'{new_entries} new entries added')
+            if self._save_prompt():
+                self.to_pickle()
 
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
         pass
@@ -1078,7 +1115,7 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'capital_one_csv
                            name=AccountNames.CAPITAL_ONE,
                            columns_names=names,
                            type=AccountType.CREDIT,
-                           status=AccountStatus.CLOSED)
+                           status=AccountStatus.OPEN)
 capital_one = CapitalOne(lmetadata=metadata)
 
 # ==============
