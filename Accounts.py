@@ -547,8 +547,8 @@ class DesjardinsMC(Account):
             plt.show()
         return fig
 
-    def plot_prediction(self, start_date: datetime.date = None, days=90, show=False, figsize=(7, 8)):
-        d = self.get_predicted_balance(days=days)
+    def plot_prediction(self, start_date: datetime.date = None, sim_date: datetime.date = None, days=90, show=False, figsize=(7, 8)):
+        d = self.get_predicted_balance(days=days, sim_date=sim_date)
         d.loc[:, 'balance'] = -1 * d.loc[:, 'balance'].copy()
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
@@ -557,8 +557,8 @@ class DesjardinsMC(Account):
 
         fig = plt.figure(figsize=figsize)
         clrs = ['actual' if row['transaction_num'] != 'na' else 'estimated' for _, row in d.iterrows()]
-        sns.pointplot(x='date', y='balance', data=d, hue=clrs, palette=['green', 'blue'])
         sns.pointplot(x='date', y='balance', data=d, color='blue')
+        sns.pointplot(x='date', y='balance', data=d, hue=clrs, palette=['green', 'blue'])
         plt.title(f'Prediction')
 
         plt.xticks(rotation=90)

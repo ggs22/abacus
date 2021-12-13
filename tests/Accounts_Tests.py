@@ -8,9 +8,10 @@ from Accounts import *
 
 
 #%%
-# for acc in accounts:
-#     print(acc.metadata.name.name)
-#     print(acc.most_recent_date)
+for acc in accounts:
+    print(acc.metadata.name.name)
+    print(acc.most_recent_date)
+    print(acc.get_current_balance())
 
 #%%
-capital_one.update_from_raw_files()
+desjardins_mc.plot_prediction(start_date=datetime.date(year=2021, month=9, day=1), show=True)
