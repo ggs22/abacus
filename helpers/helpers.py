@@ -47,22 +47,22 @@ def print_pays(start_date: datetime.date, end_date: datetime.date):
         if d.weekday() in [0, 1, 2, 3, 4]:
             pay_day_count += 1
         if d.day == 15:
-            pay_amount = pay_day_count * 7.5 * 35.88 * 0.8
+            pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
             pay_day_count = 0
             print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
         else:
             if d.month in [1, 3, 5, 7, 10, 12]:
                 if d.day == 31:
-                    pay_amount = pay_day_count * 7.5 * 35.88 * 0.8
+                    pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
                     pay_day_count = 0
                     print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
             if d.month in [4, 6, 8, 9, 11]:
                 if d.day == 30:
-                    pay_amount = pay_day_count * 7.5 * 35.88 * 0.8
+                    pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
                     pay_day_count = 0
                     print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
             if d.month in [2]:
                 if d.day == 28:
-                    pay_amount = pay_day_count * 7.5 * 35.88 * 0.8
+                    pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
                     pay_day_count = 0
                     print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')

@@ -557,7 +557,7 @@ class DesjardinsMC(Account):
 
         fig = plt.figure(figsize=figsize)
         clrs = ['actual' if row['transaction_num'] != 'na' else 'estimated' for _, row in d.iterrows()]
-        sns.pointplot(x='date', y='balance', data=d, color='blue')
+        # sns.pointplot(x='date', y='balance', data=d, color='blue')
         sns.pointplot(x='date', y='balance', data=d, hue=clrs, palette=['green', 'blue'])
         plt.title(f'Prediction')
 

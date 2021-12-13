@@ -14,4 +14,7 @@ for acc in accounts:
     print(acc.get_current_balance())
 
 #%%
-desjardins_mc.plot_prediction(start_date=datetime.date(year=2021, month=9, day=1), show=True)
+desjardins_mc.plot_prediction(start_date=datetime.date(year=2021, month=10, day=1), show=True)
+desjardins_mc.plot_prediction(start_date=datetime.date(year=2021, month=10, day=1),
+                              sim_date=datetime.date(year=2021, month=11, day=1),
+                              show=True)
