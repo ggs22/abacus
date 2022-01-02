@@ -396,6 +396,13 @@ class DesjardinsOP(Account):
 
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
+        d.drop(labels=['internal_cashflow'], inplace=True)
+        d['balance'] = np.subtract(d['deposit'], d['withdrawal'])
+        d.drop(columns=['transaction_num', 'withdrawal', 'deposit'], inplace=True)
+        return d
+
     def update_from_raw_files(self):
         new_entries = 0
         csv_files = os.listdir(self.metadata.raw_files_dir)
@@ -490,6 +497,14 @@ class DesjardinsMC(Account):
 
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
+        d.drop(labels=['internal_cashflow'], inplace=True)
+        d['balance'] = np.subtract(d['reimboursment'], d['advance'])
+        d['balance'] = np.subtract(d['balance'], d['interests'])
+        d.drop(columns=['transaction_num', 'advance', 'reimboursment', 'interests'], inplace=True)
+        return d
+
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
 
@@ -540,6 +555,8 @@ class DesjardinsMC(Account):
 
         # prepare start date for date range average
         sdate = idate - datetime.timedelta(days=90)
+        avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
+        avg['balance'] = avg['balance'].apply(lambda i: i*30)
 
         if self.planned_transactions is not None:
             template = df.iloc[0, :].copy(deep=True)
@@ -570,11 +587,22 @@ class DesjardinsMC(Account):
                         bal = template['balance']
 
                 # add average expenses to prediction
-                # if date.day == 1:
-                #     for i in avg:
-                #         print(i)
+                if date.day == 1:
+                    for expense_code in avg.index:
+                        if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other']:
+                            template.loc['date'] = pd.to_datetime(date)
+                            template['transaction_num'] = 'na'
+                            template['description'] = expense_code
+                            template['interests'] = 0
+                            template['advance'] = avg.loc[expense_code, 'balance'] * (avg.loc[expense_code, 'balance'] < 0)
+                            template['reimboursment'] = avg.loc[expense_code, 'balance'] * (avg.loc[expense_code, 'balance'] >= 0)
+                            template['balance'] = bal + template['reimboursment'] - template['advance']
+                            template['code'] = expense_code
 
+                            df = df.append(other=template, ignore_index=True)
+                            df.sort_values(by=['date', 'transaction_num'], inplace=True)
 
+                            bal = template['balance']
 
             df['delta'] = df.date.diff().shift(-1)
             df['delta'] = df.delta.array.days
@@ -731,6 +759,15 @@ class DesjardinsPR(Account):
                 d.drop(labels='internal_cashflow', inplace=True)
             d.drop(columns=['capital_paid', 'reimboursment'], inplace=True)
 
+        return d
+
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
+        if d is not None:
+            if 'internal_cashflow' in d.index:
+                d.drop(labels=['internal_cashflow'], inplace=True)
+            d['balance'] = np.subtract(d['reimboursment'], d['capital_paid'])
+            d.drop(columns=['transaction_num', 'reimboursment', 'capital_paid'], inplace=True)
         return d
 
     def get_current_balance(self) -> float:
@@ -891,6 +928,14 @@ class VisaPP(Account):
             d.columns = ['total']
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
+        if d is not None:
+            d.drop(labels=['internal_cashflow'], inplace=True)
+            d['balance'] = d['credit/payment']
+            d.drop(columns=['credit/payment'], inplace=True)
+        return d
+
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
 
@@ -921,6 +966,14 @@ class CapitalOne(Account):
             d.dropna(inplace=True)
             d['total'] = np.subtract(d.loc[:, 'credit'], d.loc[:, 'debit'])
             d.drop(columns=['debit', 'credit'], inplace=True)
+        return d
+
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
+        if d is not None:
+            d.drop(labels=['internal_cashflow'], inplace=True)
+            d['balance'] = np.subtract(d['credit'], d['debit'])
+            d.drop(columns=['credit', 'debit'], inplace=True)
         return d
 
     def update_from_raw_files(self):
@@ -1033,6 +1086,15 @@ class PayPal(Account):
             if 'internal_cashflow' in d.index:
                 d.drop(labels='internal_cashflow', inplace=True)
             d.columns = ['total']
+        return d
+
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
+        if d is not None:
+            if 'internal_cashflow' in d.index:
+                d.drop(labels=['internal_cashflow'], inplace=True)
+            if 'amount' in d.columns:
+                d.drop(columns=['amount'], inplace=True)
         return d
 
     def update_from_raw_files(self):
@@ -1148,6 +1210,13 @@ class Accounts:
         if len(av_l) > 0:
             d = pd.concat(av_l)
             d = d.groupby(by='code').sum()
+
+        if d is not None:
+            if 'transaction_num' in d.columns:
+                d.drop(columns=['transaction_num'], inplace=True)
+            if 'internal_cashflow' in d.index:
+                d.drop(labels=['internal_cashflow'], inplace=True)
+
         return d
 
     def barplot(self, year=None, month=None, day=None, show=False, average: bool = False):
