@@ -177,6 +177,13 @@ class Account(ABC):
 
         return res
 
+    def get_data_by_date_range(self, start_date: datetime.date = None, end_date: datetime.date = None) -> pd.DataFrame:
+
+        res = self.transaction_data
+        res = res[(res['date'].array.date >= start_date) & (res['date'].array.date <= end_date)]
+
+        return res
+
     def get_summed_data(self, year=None, month=None, day=None):
         if self.col_mask is not None:
             d = self.get_data_by_date(year=year, month=month, day=day).loc[:, self.col_mask]
@@ -184,7 +191,20 @@ class Account(ABC):
             d = self.get_data_by_date(year=year, month=month, day=day)
         return d.groupby(by='code').sum()
 
-    def get_summed_average(self, year=None, month=None, day=None):
+    def get_summed_date_range_data(self, start_date: datetime.date, end_date: datetime.date):
+        if self.col_mask is not None:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date).loc[:, self.col_mask]
+        else:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+        return d.groupby(by='code').sum()
+
+    def get_daily_average(self, year=None, month=None, day=None):
+        """
+        :param year: year of calculated average
+        :param month: month of calculated average
+        :param day: day of calculated average
+        :return: daily average spending per spending code
+        """
 
         d = self.get_data_by_date(year=year, month=month, day=day)
 
@@ -193,6 +213,27 @@ class Account(ABC):
             edate = d.date.tail(1).array.date
             delta = (edate - sdate)[0].days
             summed_data = self.get_summed_data(year=year, month=month, day=day)
+            if delta == 0:
+                res = summed_data
+            else:
+                res = np.divide(summed_data, delta)
+        else:
+            res = None
+
+        return res
+
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date:datetime.date):
+        """
+        :param end_date: first date of date range
+        :param start_date: last date of date range
+        :return: daily average spending per spending code for a given date rage
+        """
+
+        d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if d.shape[0] > 0:
+            delta = (end_date - start_date).days
+            summed_data = self.get_summed_date_range_data(start_date=start_date, end_date=end_date)
             if delta == 0:
                 res = summed_data
             else:
@@ -308,7 +349,7 @@ class Account(ABC):
         if not average:
             d = self.get_summed_data(year=year, month=month, day=day)
         else:
-            d = self.get_summed_average(year=year, month=month, day=day)
+            d = self.get_daily_average(year=year, month=month, day=day)
 
         if d is not None and d.shape[0] > 0:
             title = f'{year} ' * (year is not None) + \
@@ -481,19 +522,34 @@ class DesjardinsMC(Account):
                 self.to_pickle()
 
     def get_predicted_balance(self, days: int = 91, sim_date: datetime.date = None) -> pd.DataFrame:
-        df = self.get_data().copy()
+        """
+        This function gives an estimation of the future balance of the account for a specified number of days. It
+        uses the planned transaction data and optionally the average spending data.
+        :param days: number of days predicted
+        :param sim_date: date at which the prediction start
+        :return: a Dataframe containing the predicted balance of the account
+        """
 
+        # if no sim_date is specified, the prediction starts from the last entry of transaction data
+        df = self.get_data().copy()
         if sim_date is None:
             idate = pd.to_datetime(df.tail(1)['date'].values).date[0]
         else:
             idate = sim_date
             df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
 
+        # prepare start date for date range average
+        sdate = idate - datetime.timedelta(days=90)
+
         if self.planned_transactions is not None:
             template = df.iloc[0, :].copy(deep=True)
             bal = self.get_current_balance()
+
+            # for each day in the projection
             for d in range(1, days):
                 date = (idate + timedelta(days=d))
+
+                # add planned transaction tuple
                 for ix, ptransaction in self.planned_transactions.iterrows():
                     if _is_planned_transaction(year=ptransaction['year'],
                                                month=ptransaction['month'],
@@ -512,6 +568,13 @@ class DesjardinsMC(Account):
                         df.sort_values(by=['date', 'transaction_num'], inplace=True)
 
                         bal = template['balance']
+
+                # add average expenses to prediction
+                # if date.day == 1:
+                #     for i in avg:
+                #         print(i)
+
+
 
             df['delta'] = df.date.diff().shift(-1)
             df['delta'] = df.delta.array.days
@@ -547,7 +610,13 @@ class DesjardinsMC(Account):
             plt.show()
         return fig
 
-    def plot_prediction(self, start_date: datetime.date = None, sim_date: datetime.date = None, days=90, show=False, figsize=(7, 8)):
+    def plot_prediction(self,
+                        start_date: datetime.date = None,
+                        sim_date: datetime.date = None,
+                        days=90,
+                        show=False,
+                        fig_size=(7, 8)):
+
         d = self.get_predicted_balance(days=days, sim_date=sim_date)
         d.loc[:, 'balance'] = -1 * d.loc[:, 'balance'].copy()
         if start_date is None:
@@ -555,10 +624,75 @@ class DesjardinsMC(Account):
         d = d[d['date'].array.date > start_date]
         d.loc[:, 'date'] = d.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
 
-        fig = plt.figure(figsize=figsize)
-        clrs = ['actual' if row['transaction_num'] != 'na' else 'estimated' for _, row in d.iterrows()]
-        # sns.pointplot(x='date', y='balance', data=d, color='blue')
-        sns.pointplot(x='date', y='balance', data=d, hue=clrs, palette=['green', 'blue'])
+        fig = plt.figure(figsize=fig_size)
+
+        tmp = d.loc[d[d['transaction_num'] == 'na'].index[0]-1:d[d['transaction_num'] == 'na'].index[0]].copy()
+
+        plt.plot(d.loc[d['transaction_num'] != 'na', 'date'],
+                 d.loc[d['transaction_num'] != 'na', 'balance'],
+                 c='g')
+        plt.plot(tmp['date'],
+                 tmp['balance'],
+                 c='b')
+        plt.plot(d.loc[d['transaction_num'] == 'na', 'date'],
+                 d.loc[d['transaction_num'] == 'na', 'balance'],
+                 c='b')
+
+        plt.title(f'Prediction')
+
+        plt.xticks(rotation=90)
+        if show:
+            plt.show()
+        return fig
+
+    #TODO: Fix this function
+    def plot_prediction_compare(self,
+                                start_date: datetime.date = None,
+                                sim_date: datetime.date = None,
+                                days=90,
+                                show=False,
+                                fig_size=(7, 8)):
+
+        d1 = self.get_predicted_balance(days=days, sim_date=sim_date).copy()
+        d1.loc[:, 'balance'] = -1 * d1.loc[:, 'balance']
+        if start_date is None:
+            start_date = datetime.datetime.today().date() - timedelta(days=7)
+        d1 = d1[d1['date'].array.date > start_date]
+        d1.loc[:, 'date'] = d1.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+
+        fig = plt.figure(figsize=fig_size)
+
+        tmp = d1.loc[d1[d1['transaction_num']=='na'].index[0]-1:d1[d1['transaction_num']=='na'].index[0]].copy()
+
+        plt.plot(d1.loc[d1['transaction_num'] != 'na', 'date'],
+                 d1.loc[d1['transaction_num'] != 'na', 'balance'],
+                 c='g')
+        plt.plot(tmp['date'],
+                 tmp['balance'],
+                 c='b')
+        plt.plot(d1.loc[d1['transaction_num'] == 'na', 'date'],
+                 d1.loc[d1['transaction_num'] == 'na', 'balance'],
+                 c='b')
+
+        d2 = self.get_predicted_balance(days=days, sim_date=None).copy()
+        d2.loc[:, 'balance'] = -1 * d2.loc[:, 'balance']
+        if start_date is None:
+            start_date = datetime.datetime.today().date() - timedelta(days=7)
+        d2 = d2[d2['date'].array.date > start_date]
+        d2.loc[:, 'date'] = d2.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+
+        tmp = d2.loc[d2[d2['transaction_num'] == 'na'].index[0]-1:d2[d2['transaction_num'] == 'na'].index[0]].copy()
+
+        plt.plot(d2.loc[d2['transaction_num'] != 'na', 'date'],
+                 d2.loc[d2['transaction_num'] != 'na', 'balance'],
+                 c='y')
+        plt.plot(tmp['date'],
+                 tmp['balance'],
+                 c='k')
+        plt.plot(d2.loc[d2['transaction_num'] == 'na', 'date'],
+                 d2.loc[d2['transaction_num'] == 'na', 'balance'],
+                 c='r')
+
         plt.title(f'Prediction')
 
         plt.xticks(rotation=90)
@@ -784,6 +918,7 @@ class CapitalOne(Account):
             d = d.loc[:, ['debit', 'credit', 'code']].groupby('code').sum()
             if 'internal_cashflow' in d.index:
                 d.drop(labels='internal_cashflow', inplace=True)
+            d.dropna(inplace=True)
             d['total'] = np.subtract(d.loc[:, 'credit'], d.loc[:, 'debit'])
             d.drop(columns=['debit', 'credit'], inplace=True)
         return d
@@ -991,12 +1126,24 @@ class Accounts:
             d = d.groupby(by='code').sum()
         return d
 
-    def get_summed_average(self, year=None, month=None, day=None):
+    def get_daily_average(self, year=None, month=None, day=None):
         av_l = list()
         d = None
         for acc in self.accounts_list:
-            t = acc.get_summed_average(year=year, month=month, day=day)
+            t = acc.get_daily_average(year=year, month=month, day=day)
             if t.shape[0] > 0:
+                av_l.append(t)
+        if len(av_l) > 0:
+            d = pd.concat(av_l)
+            d = d.groupby(by='code').sum()
+        return d
+
+    def get_data_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        av_l = list()
+        d = None
+        for acc in self.accounts_list:
+            t = acc.get_date_range_daily_average(start_date=start_date, end_date=end_date)
+            if t is not None:
                 av_l.append(t)
         if len(av_l) > 0:
             d = pd.concat(av_l)

@@ -14,7 +14,18 @@ for acc in accounts:
     print(acc.get_current_balance())
 
 #%%
-desjardins_mc.plot_prediction(start_date=datetime.date(year=2021, month=10, day=1), show=True)
-desjardins_mc.plot_prediction(start_date=datetime.date(year=2021, month=10, day=1),
-                              sim_date=datetime.date(year=2021, month=11, day=1),
-                              show=True)
+sdate = datetime.date(year=2021, month=10, day=1)
+edate = datetime.date(year=2021, month=10, day=16)
+
+desjardins_mc.plot_prediction(start_date=sdate, show=True)
+desjardins_mc.plot_prediction(start_date=sdate, sim_date=edate, show=True)
+# desjardins_mc.plot_prediction_compare(start_date=sdate, sim_date=edate, show=True)
+
+avg = accounts.get_daily_average(year=2021)
+avg = accounts.get_daily_average()
+
+sdate = datetime.date(year=2021, month=12, day=1)
+edate = datetime.date(year=2021, month=12, day=31)
+
+avg2 = accounts.get_data_range_daily_average(start_date=sdate, end_date=edate)
+capital_one.get_data_by_date_range(start_date=sdate, end_date=edate)

@@ -40,29 +40,40 @@ def get_css_selector_from_html(html_code: str, wait_time=5):
     print(ret)
 
 
-def print_pays(start_date: datetime.date, end_date: datetime.date):
-    pay_day_count = 0
+def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
+    """
+    :param start_date: first day of pay period
+    :param end_date: last day of pay period
+    :return: prints pay tupples for the "desjardins_planned_transactions.csv" file
+    """
+    switch_week = False
+    pay_day_counts = [0, 0]
+    daily_hours = 7.5
+    hourly_rate = 35.9
+    clear_pay_rate = 0.6887
+
+    # LTI pays are max 16 days after pay period (fix dates pays)
+    end_date = end_date + datetime.timedelta(days=16)
+
     for i in range(0, (end_date-start_date).days):
         d = start_date + datetime.timedelta(days=i)
         if d.weekday() in [0, 1, 2, 3, 4]:
-            pay_day_count += 1
+            pay_day_counts[switch_week] += 1
         if d.day == 15:
-            pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
-            pay_day_count = 0
+            pay_amount = calculate_pay(pay_day_counts[not switch_week])
+            pay_day_counts[not switch_week] = 0
             print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
-        else:
-            if d.month in [1, 3, 5, 7, 10, 12]:
-                if d.day == 31:
-                    pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
-                    pay_day_count = 0
-                    print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
-            if d.month in [4, 6, 8, 9, 11]:
-                if d.day == 30:
-                    pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
-                    pay_day_count = 0
-                    print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
-            if d.month in [2]:
-                if d.day == 28:
-                    pay_amount = round(pay_day_count * 7.5 * 35.88 * 0.8, 2)
-                    pay_day_count = 0
-                    print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
+            switch_week = not switch_week
+        elif d.day == 1:
+            tmp = d - datetime.timedelta(days=1)
+            pay_amount = calculate_pay(pay_day_counts[not switch_week])
+            pay_day_counts[not switch_week] = 0
+            print(f'pay,{tmp.year},{tmp.month},{tmp.day},0,{pay_amount},pay')
+            switch_week = not switch_week
+
+
+def calculate_pay(days: int, clear=True):
+    daily_hours = 7.5
+    hourly_rate = 35.9
+    rate = 0.6887 if clear else 1
+    return round(days * daily_hours * hourly_rate * rate, 2)
