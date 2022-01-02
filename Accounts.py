@@ -198,6 +198,27 @@ class Account(ABC):
             d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
         return d.groupby(by='code').sum()
 
+    def get_date_range_data_std(self, start_date: datetime.date, end_date: datetime.date):
+        if self.col_mask is not None:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date).loc[:, self.col_mask]
+        else:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+        return d.groupby(by='code').std()
+
+    def get_date_range_data_mean(self, start_date: datetime.date, end_date: datetime.date):
+        if self.col_mask is not None:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date).loc[:, self.col_mask]
+        else:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+        return d.groupby(by='code').mean()
+
+    def get_date_range_data_code_count(self, start_date: datetime.date, end_date: datetime.date):
+        if self.col_mask is not None:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date).loc[:, self.col_mask]
+        else:
+            d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+        return d.value_counts()
+
     def get_daily_average(self, year=None, month=None, day=None):
         """
         :param year: year of calculated average
