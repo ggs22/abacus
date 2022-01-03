@@ -671,7 +671,28 @@ class DesjardinsMC(Account):
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
         d = d[d['date'].array.date > start_date]
-        d.loc[:, 'date'] = d.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+
+        edate = d.tail(1)['date'].array[0]
+
+        for ix, row in d.iterrows():
+            i = 1
+            date = row['date'] + datetime.timedelta(days=i)
+            while (d['date'] == date).sum() == 0 and date < edate:
+                template = row.copy()
+                template['date'] = date
+                template['transaction_num'] = row['transaction_num']
+                template['description'] = 0
+                template['interests'] = 0
+                template['advance'] = 0
+                template['reimboursment'] = 0
+                template['code'] = 0
+                template['delta'] = 0
+                template['cap_interest'] = 0
+                d = d.append(template)
+                i += 1
+                date = row['date'] + datetime.timedelta(days=i)
+
+        d.sort_values(by='date', inplace=True)
 
         fig = plt.figure(figsize=fig_size)
 
