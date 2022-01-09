@@ -577,7 +577,7 @@ class DesjardinsMC(Account):
         # prepare start date for date range average
         sdate = idate - datetime.timedelta(days=90)
         avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
-        avg['balance'] = avg['balance'].apply(lambda i: i*30)
+        # avg['balance'] = avg['balance'].apply(lambda i: i*30)
 
         if self.planned_transactions is not None:
             template = df.iloc[0, :].copy(deep=True)
@@ -608,23 +608,23 @@ class DesjardinsMC(Account):
                         bal = template['balance']
 
                 # add average expenses to prediction
-                if date.day == 20:
-                    for expense_code in avg.index:
-                        if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
-                                                'credit', 'Impots & TPS']:
-                            template.loc['date'] = pd.to_datetime(date)
-                            template['transaction_num'] = 'na'
-                            template['description'] = expense_code
-                            template['interests'] = 0
-                            template['advance'] = avg.loc[expense_code, 'balance'] * (avg.loc[expense_code, 'balance'] < 0)
-                            template['reimboursment'] = avg.loc[expense_code, 'balance'] * (avg.loc[expense_code, 'balance'] >= 0)
-                            template['balance'] = bal + template['reimboursment'] - template['advance']
-                            template['code'] = expense_code
+                # if date.day == 20:
+                for expense_code in avg.index:
+                    if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
+                                            'credit', 'Impots & TPS']:
+                        template.loc['date'] = pd.to_datetime(date)
+                        template['transaction_num'] = 'na'
+                        template['description'] = expense_code
+                        template['interests'] = 0
+                        template['advance'] = avg.loc[expense_code, 'balance'] * (avg.loc[expense_code, 'balance'] < 0)
+                        template['reimboursment'] = avg.loc[expense_code, 'balance'] * (avg.loc[expense_code, 'balance'] >= 0)
+                        template['balance'] = bal + template['reimboursment'] - template['advance']
+                        template['code'] = expense_code
 
-                            df = df.append(other=template, ignore_index=True)
-                            df.sort_values(by=['date', 'transaction_num'], inplace=True)
+                        df = df.append(other=template, ignore_index=True)
+                        df.sort_values(by=['date', 'transaction_num'], inplace=True)
 
-                            bal = template['balance']
+                        bal = template['balance']
 
             df['delta'] = df.date.diff().shift(-1)
             df['delta'] = df.delta.array.days
