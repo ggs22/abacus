@@ -54,12 +54,12 @@ def _barplot_dataframe(d: pd.DataFrame, title: str, figsize=(7, 7), show=False):
     clrs = ['green' if (x > 0) else 'red' for x in d['total']]
     g = sns.barplot(x='total', y=d.index, data=d, palette=clrs, tick_label=str(d['total'].values))
     for i, t in enumerate(d['total']):
-        g.text(x=t, y=i, s=f'{t:.2f}')
+        g.text(x=(t*(t > 0) + 2), y=i, s=f'{t:.2f}')
 
     plt.title(title)
     plt.subplots_adjust(left=0.25)
-    if show:
-        plt.show()
+    # if show:
+    #     plt.show()
     return fig
 
 
@@ -608,9 +608,10 @@ class DesjardinsMC(Account):
                         bal = template['balance']
 
                 # add average expenses to prediction
-                if date.day == 1:
+                if date.day == 20:
                     for expense_code in avg.index:
-                        if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other']:
+                        if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
+                                                'credit', 'Impots & TPS']:
                             template.loc['date'] = pd.to_datetime(date)
                             template['transaction_num'] = 'na'
                             template['description'] = expense_code
@@ -693,6 +694,7 @@ class DesjardinsMC(Account):
                 date = row['date'] + datetime.timedelta(days=i)
 
         d.sort_values(by='date', inplace=True)
+        d.reset_index(drop=True, inplace=True)
 
         fig = plt.figure(figsize=fig_size)
 
@@ -711,6 +713,7 @@ class DesjardinsMC(Account):
         plt.title(f'Prediction')
 
         plt.xticks(rotation=90)
+        plt.yticks(ticks=np.arange(-70000, 0, 1000))
         if show:
             plt.show()
         return fig
@@ -1214,6 +1217,9 @@ class PayPal(Account):
 class Accounts:
     def __init__(self, l_accounts_list: list):
         self.accounts_list = l_accounts_list
+        self.accounts_dict = dict()
+        for acc in self.accounts_list:
+            self.accounts_dict[acc.metadata.name.name] = acc
 
     def __iter__(self):
         yield from self.accounts_list
@@ -1235,7 +1241,7 @@ class Accounts:
         d = None
         for acc in self.accounts_list:
             t = acc.get_daily_average(year=year, month=month, day=day)
-            if t.shape[0] > 0:
+            if t is not None:
                 av_l.append(t)
         if len(av_l) > 0:
             d = pd.concat(av_l)
@@ -1264,9 +1270,9 @@ class Accounts:
     def barplot(self, year=None, month=None, day=None, show=False, average: bool = False):
 
         if not average:
-            d = self.get_summed_data(year=year, month=month, day=day)
+            d = self.get_daily_average(year=year, month=month, day=day)
         else:
-            d = self.get_summed_average(year=year, month=month, day=day)
+            d = self.get_daily_average(year=year, month=month, day=day)
 
         if d is not None and d.shape[0] > 0:
             title = f'{year} ' * (year is not None) + \
@@ -1279,6 +1285,9 @@ class Accounts:
         for acc in self.accounts_list:
             name_list.append(acc.metadata.name.name)
         return name_list
+
+    def get_account(self, account_name: AccountNames):
+        return self.accounts_dict[account_name]
 
     def get_by_name(self, name: AccountNames):
         res = None

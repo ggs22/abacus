@@ -1,5 +1,3 @@
-
-
 import matplotlib.pyplot as plt
 import pandas as pd
 import PIL
@@ -10,6 +8,7 @@ import Accounts
 from tkinter import ttk
 # from Grapher import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from tkcalendar import Calendar, DateEntry
 
 _tree_view_font_size = 9
 
@@ -21,7 +20,7 @@ class View:
         self.root = tk.Tk()
         self.root.title('Abacus')
         self.root.geometry('1600x800')
-        self.accounts = Accounts
+        # self.accounts = Accounts
 
         # set style
         style = ttk.Style(self.root)
@@ -33,11 +32,25 @@ class View:
         # initialize widgets
         self.root.configure(background='#777777')
 
-        account_cbox = ttk.Combobox(self.root, width=20)
-        account_cbox.grid(column=0, row=0)
-        account_cbox['values'] = Accounts.accounts.get_names()
+        self.start_date = DateEntry()
+        self.start_date.grid(column=0, row=0)
+        self.start_date.bind('<<DateEntrySelected>>', self.update_account_display)
+
+        self.end_date = DateEntry()
+        self.end_date.grid(column=1, row=0)
+        self.end_date.bind('<<DateEntrySelected>>', self.update_account_display)
+
+        self.account_cbox = ttk.Combobox(self.root, width=20)
+        self.account_cbox.grid(column=2, row=0)
+        self.account_cbox['values'] = Accounts.accounts.get_names()
+        self.account_cbox.bind("<<ComboboxSelected>>", self.update_account_display)
 
         self.main_tview = None
+
+    def update_account_display(self, event):
+        print(event)
+        print(self.account_cbox.get())
+        print(Accounts.accounts.get_account(self.account_cbox.get()))
 
     def start(self):
         self.root.mainloop()
@@ -45,10 +58,10 @@ class View:
     def set_button_action(self):
         but_desjardins_op = tk.Button(self.root, text="Desjardins OP", command=self.set_desjardins_op_treeview,
                                       fg='#cccccc', bg='#555555')
-        but_desjardins_op.grid(row=0, column=0)
+        but_desjardins_op.grid(row=0, column=3)
 
         but_desjardins_mc = ttk.Button(self.root, text="Desjardinc MC", command=self.set_desjardons_mc_treeview)
-        but_desjardins_mc.grid(row=1, column=0)
+        but_desjardins_mc.grid(row=1, column=4)
 
     def inscribe_dataframe(self, df: pd.DataFrame, labels=None):
 
@@ -74,9 +87,9 @@ class View:
             self.main_tview.insert(parent='', index=tk.END, iid=(row['date'], row['transaction_num']),
                                    values=tuple(row))
 
-        self.main_tview.grid(row=1, column=0, rowspan=50)
+        self.main_tview.grid(row=1, column=1)  # rowspan=10
 
-    def display_figure(self, fig, row=0, column=0):
+    def display_figure(self, fig):
         canva = FigureCanvasTkAgg(fig, master=self.root)
         canva.draw()
-        canva.get_tk_widget().grid(row=row, column=column, rowspan=1)
+        canva.get_tk_widget().grid(row=1, column=2, rowspan=1)
