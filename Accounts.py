@@ -580,8 +580,8 @@ class DesjardinsMC(Account):
         # avg['balance'] = avg['balance'].apply(lambda i: i*30)
 
         if self.planned_transactions is not None:
-            template = df.iloc[0, :].copy(deep=True)
-            bal = self.get_current_balance()
+            template = df.tail(1).copy(deep=True)
+            bal = template.balance.values[0]
 
             # for each day in the projection
             for d in range(1, days):
@@ -593,7 +593,7 @@ class DesjardinsMC(Account):
                                                month=ptransaction['month'],
                                                day=ptransaction['day'],
                                                date=date):
-                        template.loc['date'] = pd.to_datetime(date)
+                        template['date'] = pd.to_datetime(date)
                         template['transaction_num'] = 'na'
                         template['description'] = ptransaction['description']
                         template['interests'] = 0
@@ -612,7 +612,7 @@ class DesjardinsMC(Account):
                 for expense_code in avg.index:
                     if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
                                             'credit', 'Impots & TPS']:
-                        template.loc['date'] = pd.to_datetime(date)
+                        template['date'] = pd.to_datetime(date)
                         template['transaction_num'] = 'na'
                         template['description'] = expense_code
                         template['interests'] = 0
@@ -713,7 +713,9 @@ class DesjardinsMC(Account):
         plt.title(f'Prediction')
 
         plt.xticks(rotation=90)
-        plt.yticks(ticks=np.arange(-70000, 0, 1000))
+        plt.yticks(ticks=np.arange(np.round(d.balance.min() - 500, -3),
+                                   np.round(d.balance.max() + 500, -3),
+                                   1000))
         if show:
             plt.show()
         return fig
@@ -745,7 +747,7 @@ class DesjardinsMC(Account):
                  c='b')
         plt.plot(d1.loc[d1['transaction_num'] == 'na', 'date'],
                  d1.loc[d1['transaction_num'] == 'na', 'balance'],
-                 c='b')
+                 c='r')
 
         d2 = self.get_predicted_balance(days=days, sim_date=None).copy()
         d2.loc[:, 'balance'] = -1 * d2.loc[:, 'balance']
@@ -758,13 +760,13 @@ class DesjardinsMC(Account):
 
         plt.plot(d2.loc[d2['transaction_num'] != 'na', 'date'],
                  d2.loc[d2['transaction_num'] != 'na', 'balance'],
-                 c='y')
+                 c='g')
         plt.plot(tmp['date'],
                  tmp['balance'],
                  c='k')
         plt.plot(d2.loc[d2['transaction_num'] == 'na', 'date'],
                  d2.loc[d2['transaction_num'] == 'na', 'balance'],
-                 c='r')
+                 c='b')
 
         plt.title(f'Prediction')
 

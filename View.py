@@ -50,7 +50,8 @@ class View:
     def update_account_display(self, event):
         print(event)
         print(self.account_cbox.get())
-        print(Accounts.accounts.get_account(self.account_cbox.get()))
+        df = Accounts.accounts.get_account(self.account_cbox.get()).transaction_data
+        self.inscribe_dataframe(df=df)
 
     def start(self):
         self.root.mainloop()
