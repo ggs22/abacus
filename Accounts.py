@@ -720,7 +720,6 @@ class DesjardinsMC(Account):
             plt.show()
         return fig
 
-    #TODO: Fix this function
     def plot_prediction_compare(self,
                                 start_date: datetime.date = None,
                                 sim_date: datetime.date = None,
@@ -1272,7 +1271,7 @@ class Accounts:
     def barplot(self, year=None, month=None, day=None, show=False, average: bool = False):
 
         if not average:
-            d = self.get_daily_average(year=year, month=month, day=day)
+            d = self.get_summed_data(year=year, month=month, day=day)
         else:
             d = self.get_daily_average(year=year, month=month, day=day)
 
