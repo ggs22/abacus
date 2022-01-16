@@ -557,12 +557,12 @@ class DesjardinsMC(Account):
             if self._save_prompt():
                 self.to_pickle()
 
-    def get_predicted_balance(self, days: int = 91, sim_date: datetime.date = None) -> pd.DataFrame:
+    def get_predicted_balance(self, end_date: datetime.date, sim_date: datetime.date = None) -> pd.DataFrame:
         """
         This function gives an estimation of the future balance of the account for a specified number of days. It
         uses the planned transaction data and optionally the average spending data.
-        :param days: number of days predicted
-        :param sim_date: date at which the prediction start
+        :param end_date: daate at which the prediction ends
+        :param sim_date: date at which the prediction starts
         :return: a Dataframe containing the predicted balance of the account
         """
 
@@ -571,20 +571,22 @@ class DesjardinsMC(Account):
         if sim_date is None:
             idate = pd.to_datetime(df.tail(1)['date'].values).date[0]
         else:
+            if sim_date > end_date:
+                raise RuntimeError(f'Simulation starting date ({sim_date}) is ulterior to simulation ending date '
+                                   f'({end_date})')
             idate = sim_date
             df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
 
         # prepare start date for date range average
         sdate = idate - datetime.timedelta(days=90)
         avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
-        # avg['balance'] = avg['balance'].apply(lambda i: i*30)
 
         if self.planned_transactions is not None:
             template = df.tail(1).copy(deep=True)
             bal = template.balance.values[0]
 
             # for each day in the projection
-            for d in range(1, days):
+            for d in range(1, (end_date-idate).days):
                 date = (idate + timedelta(days=d))
 
                 # add planned transaction tuple
@@ -661,13 +663,13 @@ class DesjardinsMC(Account):
         return fig
 
     def plot_prediction(self,
+                        end_date: datetime.date,
                         start_date: datetime.date = None,
                         sim_date: datetime.date = None,
-                        days=90,
                         show=False,
                         fig_size=(7, 8)):
 
-        d = self.get_predicted_balance(days=days, sim_date=sim_date)
+        d = self.get_predicted_balance(end_date=end_date, sim_date=sim_date)
         d.loc[:, 'balance'] = -1 * d.loc[:, 'balance'].copy()
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
@@ -721,13 +723,13 @@ class DesjardinsMC(Account):
         return fig
 
     def plot_prediction_compare(self,
+                                end_date: datetime.date,
                                 start_date: datetime.date = None,
                                 sim_date: datetime.date = None,
-                                days=90,
                                 show=False,
                                 fig_size=(7, 8)):
 
-        d1 = self.get_predicted_balance(days=days, sim_date=sim_date).copy()
+        d1 = self.get_predicted_balance(end_date=end_date, sim_date=sim_date).copy()
         d1.loc[:, 'balance'] = -1 * d1.loc[:, 'balance']
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
@@ -748,7 +750,7 @@ class DesjardinsMC(Account):
                  d1.loc[d1['transaction_num'] == 'na', 'balance'],
                  c='r')
 
-        d2 = self.get_predicted_balance(days=days, sim_date=None).copy()
+        d2 = self.get_predicted_balance(end_date=end_date, sim_date=None).copy()
         d2.loc[:, 'balance'] = -1 * d2.loc[:, 'balance']
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
@@ -977,7 +979,8 @@ class VisaPP(Account):
     def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
         d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
         if d is not None:
-            d.drop(labels=['internal_cashflow'], inplace=True)
+            if 'internal_cashflow' in d.index:
+                d.drop(labels=['internal_cashflow'], inplace=True)
             d['balance'] = d['credit/payment']
             d.drop(columns=['credit/payment'], inplace=True)
         return d
