@@ -5,6 +5,7 @@ import re
 import pyperclip
 import datetime
 
+
 def print_step(stp_name: str, stp_ix: int, stp_tot: int, msg: str = ''):
     print(f'{colorama.Fore.BLUE}'
           f'######################################################################'
@@ -71,6 +72,23 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
             print(f'pay,{tmp.year},{tmp.month},{tmp.day},0,{pay_amount},pay')
             switch_week = not switch_week
 
+
+def print_pay_dates(start_date: datetime.date = datetime.datetime.today().date(),
+                    end_date: datetime.date = datetime.datetime.today().date() + datetime.timedelta(days=90)):
+    date = start_date
+    for i in range (0, (end_date - start_date).days // 7):
+        date = date + datetime.timedelta(days=i*14)
+        if date > end_date:
+            break
+        # Monday == 1 ... Sunday == 7
+        if date.isoweekday() == 4:
+            print(f'pay,{date.year},{date.month},{date.day},0,1200,pay')
+
+
+sdate = datetime.date(year=2021, month=8, day=5)
+edate = datetime.date(year=2021, month=9, day=30)
+
+print_pay_dates(start_date=sdate, end_date=edate)
 
 def calculate_pay(days: int, clear=True):
     daily_hours = 7.5
