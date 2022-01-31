@@ -1,4 +1,5 @@
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import numpy as np
 import pandas as pd
 import pickle
@@ -58,8 +59,8 @@ def _barplot_dataframe(d: pd.DataFrame, title: str, figsize=(7, 7), show=False):
 
     plt.title(title)
     plt.subplots_adjust(left=0.25)
-    # if show:
-    #     plt.show()
+    if show:
+        plt.show()
     return fig
 
 
@@ -595,7 +596,7 @@ class DesjardinsMC(Account):
             df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
 
         # prepare start date for date range average
-        sdate = idate - datetime.timedelta(days=90)
+        sdate = idate - datetime.timedelta(days=365 )
         avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
 
         if self.planned_transactions is not None:
@@ -645,9 +646,10 @@ class DesjardinsMC(Account):
 
                         bal = template['balance']
 
+            # add interest estimate
             df['delta'] = df.date.diff().shift(-1)
             df['delta'] = df.delta.array.days
-            df['cap_interest'] = np.multiply(df.balance, df.delta) * self.metadata.interest_rate / 372
+            df['cap_interest'] = np.multiply(df.balance, df.delta) * self.metadata.interest_rate / 365
             df.replace(np.nan, 0, inplace=True)
 
             interest_sum = 0
@@ -730,11 +732,12 @@ class DesjardinsMC(Account):
                  c='b')
 
         plt.title(f'Prediction')
-
+        plt.grid(b=True, which='major', axis='both')
+        plt.grid(b=True, which='minor', axis='x')
         plt.xticks(rotation=90)
         plt.yticks(ticks=np.arange(np.round(d.balance.min() - 500, -3),
                                    np.round(d.balance.max() + 500, -3),
-                                   1000))
+                                   500))
         if show:
             plt.show()
         return fig
@@ -787,8 +790,15 @@ class DesjardinsMC(Account):
                  c='b')
 
         plt.title(f'Prediction {start_date} to {end_date}')
-
+        plt.grid(b=True, which='major', axis='both')
+        plt.grid(b=True, which='minor', axis='x')
         plt.xticks(rotation=90)
+        plt.yticks(ticks=np.arange(np.round(d2.balance.min() - 1000, -3),
+                                   np.round(d2.balance.max() + 1000, -3),
+                                   500))
+
+        plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=1))
+
         if show:
             plt.show()
         return fig
@@ -1097,9 +1107,11 @@ class CapitalOne(Account):
 
         # Adds column,and inputs transaction code
         cash_flow = cash_flow.replace(np.nan, 0)
-        cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
         cash_flow.sort_values(by=['date'], inplace=True)
         cash_flow.reset_index(inplace=True, drop=True)
+        cash_flow['credit'] = cash_flow['credit'].apply(lambda i: float(i))
+        cash_flow['debit'] = cash_flow['debit'].apply(lambda i: float(i))
+        cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
         # tst = _get_codes(cash_flow[cash_flow['code'] == 0])
         # cash_flow.iloc[cash_flow['code'] == 0, 'code'] = tst
         for ix, row in cash_flow[cash_flow['code'] == 0].iterrows():

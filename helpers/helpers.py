@@ -90,8 +90,26 @@ edate = datetime.date(year=2021, month=9, day=30)
 
 print_pay_dates(start_date=sdate, end_date=edate)
 
+
 def calculate_pay(days: int, clear=True):
+    """
+    Calculates the pay for a given number of work days
+    :param days: number of work days
+    :param clear: if true, taxes will be deducted from result
+    :return: pay amount
+    """
+
     daily_hours = 7.5
     hourly_rate = 35.9
     rate = 0.6887 if clear else 1
     return round(days * daily_hours * hourly_rate * rate, 2)
+
+
+def calculate_mc_interest(amount:float, days: int):
+    """
+    Calculates the accumulated interest per day for desjardins MC account
+    :param days: number of days for which the interest is capitalized
+    :return: interest amount
+    """
+    interest_rate = 0.0295 / 365.24
+    return amount * (1+interest_rate) ** days

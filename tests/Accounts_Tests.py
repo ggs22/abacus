@@ -2,40 +2,72 @@
 from Accounts import *
 
 
-#%%
-# for year in [2019, 2020, 2021]:
-#     accounts.barplot(year=year, show=True)
+def plot_years():
+    for year in [2019, 2020, 2021]:
+        accounts.barplot(year=year, show=True)
 
 
-#%%
-for acc in accounts:
-    print(acc.metadata.name.name)
-    print(acc.most_recent_date)
-    print(acc.get_current_balance())
+def print_accounts_info():
+    for acc in accounts:
+        print(acc.metadata.name.name)
+        print(acc.most_recent_date)
+        print(acc.get_current_balance())
 
 
-#%%
-start_date = datetime.date(year=2020, month=1, day=1)
-sim_date = datetime.date(year=2021, month=12, day=31)
-end_date = datetime.date(year=2022, month=12, day=31)
+def plot_predictions():
+    start_date = datetime.date(year=2019, month=12, day=2)
+    sim_date = datetime.date(year=2022, month=1, day=20)
+    end_date = datetime.date(year=2022, month=12, day=31)
 
-# desjardins_mc.plot_prction(start_date=start_date, end_date=end_date, show=True)
-# # desjardins_mc.plot_predicedition_compare(start_date=start_date, sim_date=sim_date, end_date=end_date, show=True)
+    desjardins_mc.plot_prediction_compare(start_date=start_date, sim_date=sim_date, end_date=end_date, show=True)
 
-avg = accounts.get_daily_average(year=2021)
-avg = accounts.get_daily_average()
 
-start_date = datetime.date(year=2021, month=12, day=1)
-end_date = datetime.date(year=2021, month=12, day=31)
+def get_averages():
+    avg = accounts.get_daily_average(year=2021)
+    print(avg)
+    avg = accounts.get_daily_average()
+    print(avg)
 
-accounts.barplot(year=2021, average=False, show=True)
-accounts.barplot(year=2021, average=True, show=True)
 
-accounts.barplot_date_range(start_date=start_date, end_date=end_date)
-accounts.barplot_date_range(start_date=start_date, end_date=end_date, average=True)
+def accounts_barplots():
+    start_date = datetime.date(year=2021, month=12, day=1)
+    end_date = datetime.date(year=2021, month=12, day=31)
 
-for i in [10, 11, 12]:
-    accounts.barplot(year=2021, month=i, show=True)
+    accounts.barplot(year=2021, average=False, show=True)
+    accounts.barplot(year=2021, average=True, show=True)
 
-for i in [1]:
-    accounts.barplot(year=2022, month=1, show=True)
+    accounts.barplot_date_range(start_date=start_date, end_date=end_date)
+    accounts.barplot_date_range(start_date=start_date, end_date=end_date, average=True)
+
+    for i in [10, 11, 12]:
+        accounts.barplot(year=2021, month=i, show=True)
+
+    for i in [1]:
+        accounts.barplot(year=2022, month=1, show=True)
+        accounts.barplot(year=2022, month=1, show=True, average=True)
+
+
+def bp_years(years, average=False):
+    for y in years:
+        accounts.barplot(year=y, show=True, average=average)
+
+
+def bp_last_three_months(average=False):
+    d = datetime.datetime.today().date()
+    for i in [0, 1, 2]:
+        d = d - datetime.timedelta(days=(30 * i))
+        accounts.barplot(year=d.year, month=d.month, show=True, average=average)
+
+
+def bp_current_month():
+    accounts.barplot(year=datetime.datetime.today().year,
+                     month=datetime.datetime.today().month)
+
+
+if __name__ == "__main__":
+    "tests"
+    start_date = datetime.date(year=2021, month=1, day=1)
+    sim_date = datetime.date(year=2021, month=12, day=31)
+    end_date = datetime.date(year=2022, month=4, day=2)
+    pred = desjardins_mc.get_predicted_balance(end_date=end_date)
+    # plot_predictions()
