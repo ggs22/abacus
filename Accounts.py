@@ -228,17 +228,22 @@ class Account(ABC):
         :return: daily average spending per spending code
         """
 
-        d = self.get_data_by_date(year=year, month=month, day=day)
+        if day is not None:
+            delta = 1
+        elif day is None and month is not None:
+            if month in [1, 3, 5, 7, 8, 10, 12]:
+                delta = 31
+            elif month in [4, 6, 9, 11]:
+                delta = 30
+            elif month == 2:
+                delta = 28
+        elif day is None and month is None and year is not None:
+            delta = 365
 
+        d = self.get_data_by_date(year=year, month=month, day=day)
         if d.shape[0] > 0:
-            sdate = d.date.head(1).array.date
-            edate = d.date.tail(1).array.date
-            delta = (edate - sdate)[0].days
             summed_data = self.get_summed_data(year=year, month=month, day=day)
-            if delta == 0:
-                res = summed_data
-            else:
-                res = np.divide(summed_data, delta)
+            res = np.divide(summed_data, delta)
         else:
             res = None
 
@@ -793,8 +798,10 @@ class DesjardinsMC(Account):
         plt.grid(b=True, which='major', axis='both')
         plt.grid(b=True, which='minor', axis='x')
         plt.xticks(rotation=90)
-        plt.yticks(ticks=np.arange(np.round(d2.balance.min() - 1000, -3),
-                                   np.round(d2.balance.max() + 1000, -3),
+        min_y = min(d1.balance.min(), d2.balance.min())
+        max_y = max(d1.balance.max(), d2.balance.max())
+        plt.yticks(ticks=np.arange(np.round(min_y - 1000, -3),
+                                   np.round(max_y + 1000, -3),
                                    500))
 
         plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=1))

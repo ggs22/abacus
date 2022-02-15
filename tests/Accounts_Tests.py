@@ -16,7 +16,7 @@ def print_accounts_info():
 
 def plot_predictions():
     start_date = datetime.date(year=2019, month=12, day=2)
-    sim_date = datetime.date(year=2022, month=1, day=20)
+    sim_date = datetime.date(year=2021, month=12, day=15)
     end_date = datetime.date(year=2022, month=12, day=31)
 
     desjardins_mc.plot_prediction_compare(start_date=start_date, sim_date=sim_date, end_date=end_date, show=True)
@@ -64,10 +64,16 @@ def bp_current_month():
                      month=datetime.datetime.today().month)
 
 
+def adhoc_test():
+    accounts.barplot(year=2022, month=1, average=False)
+    accounts.barplot(year=2022, month=1, average=True)
+
+
 if __name__ == "__main__":
     "tests"
     start_date = datetime.date(year=2021, month=1, day=1)
     sim_date = datetime.date(year=2021, month=12, day=31)
     end_date = datetime.date(year=2022, month=4, day=2)
     pred = desjardins_mc.get_predicted_balance(end_date=end_date)
+    adhoc_test()
     # plot_predictions()
