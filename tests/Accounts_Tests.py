@@ -1,4 +1,3 @@
-#%%
 from Accounts import *
 
 
@@ -14,12 +13,15 @@ def print_accounts_info():
         print(acc.get_current_balance())
 
 
-def plot_predictions():
+def plot_predictions(force_new: bool = False):
     start_date = datetime.date(year=2019, month=12, day=2)
-    sim_date = datetime.date(year=2021, month=12, day=15)
+    sim_date = datetime.date(year=2022, month=2, day=15)
     end_date = datetime.date(year=2022, month=12, day=31)
 
-    desjardins_mc.plot_prediction_compare(start_date=start_date, sim_date=sim_date, end_date=end_date, show=True)
+    desjardins_mc.plot_prediction_compare(start_date=start_date,
+                                          sim_date=sim_date,
+                                          end_date=end_date,
+                                          show=True, force_new=force_new)
 
 
 def get_averages():
@@ -65,15 +67,13 @@ def bp_current_month():
 
 
 def adhoc_test():
-    accounts.barplot(year=2022, month=1, average=False)
-    accounts.barplot(year=2022, month=1, average=True)
+    """ad hoc test"""
+    # desjardins_op.update_from_raw_files()
 
 
 if __name__ == "__main__":
     "tests"
-    start_date = datetime.date(year=2021, month=1, day=1)
-    sim_date = datetime.date(year=2021, month=12, day=31)
-    end_date = datetime.date(year=2022, month=4, day=2)
-    pred = desjardins_mc.get_predicted_balance(end_date=end_date)
+    pred = desjardins_mc.get_predicted_balance(end_date=datetime.date(year=2022, month=4, day=2))
     adhoc_test()
-    # plot_predictions()
+    bp_last_three_months()
+    plot_predictions()

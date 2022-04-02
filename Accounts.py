@@ -14,6 +14,10 @@ from enum import Enum
 from abc import abstractmethod, ABC
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
+from helpers import helpers
+from helpers.helpers import root_dir, pickle_dir
+
+import helpers.helpers
 
 
 class AccountNames(Enum):
@@ -580,7 +584,10 @@ class DesjardinsMC(Account):
             if self._save_prompt():
                 self.to_pickle()
 
-    def get_predicted_balance(self, end_date: datetime.date, sim_date: datetime.date = None) -> pd.DataFrame:
+    def get_predicted_balance(self,
+                              end_date: datetime.date,
+                              sim_date: datetime.date = None,
+                              force_new: bool = False) -> pd.DataFrame:
         """
         This function gives an estimation of the future balance of the account for a specified number of days. It
         uses the planned transaction data and optionally the average spending data.
@@ -589,87 +596,98 @@ class DesjardinsMC(Account):
         :return: a Dataframe containing the predicted balance of the account
         """
 
-        # if no sim_date is specified, the prediction starts from the last entry of transaction data
-        df = self.get_data().copy()
-        if sim_date is None:
-            idate = pd.to_datetime(df.tail(1)['date'].values).date[0]
+        fname = f'prd.pkl_{sim_date}_{end_date}'
+        fpath = os.path.join(pickle_dir, fname)
+        if os.path.exists(fpath) and not force_new:
+            print(f'Prediction loaded from previous execution ({fpath})')
+            with open(fpath, 'rb') as file:
+                df = pickle.load(file=file)
         else:
-            if sim_date > end_date:
-                raise RuntimeError(f'Simulation starting date ({sim_date}) is ulterior to simulation ending date '
-                                   f'({end_date})')
-            idate = sim_date
-            df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
+            # if no sim_date is specified, the prediction starts from the last entry of transaction data
+            df = self.get_data().copy()
+            if sim_date is None:
+                idate = pd.to_datetime(df.tail(1)['date'].values).date[0]
+            else:
+                if sim_date > end_date:
+                    raise RuntimeError(f'Simulation starting date ({sim_date}) is ulterior to simulation ending date '
+                                       f'({end_date})')
+                idate = sim_date
+                df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
 
-        # prepare start date for date range average
-        sdate = idate - datetime.timedelta(days=365 )
-        avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
+            # prepare start date for date range average
+            sdate = idate - datetime.timedelta(days=365 )
+            avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
 
-        if self.planned_transactions is not None:
-            template = df.tail(1).copy(deep=True)
-            bal = template.balance.values[0]
+            if self.planned_transactions is not None:
+                template = df.tail(1).copy(deep=True)
+                bal = template.balance.values[0]
 
-            # for each day in the projection
-            for d in range(1, (end_date-idate).days):
-                date = (idate + timedelta(days=d))
+                # for each day in the projection
+                for d in range(1, (end_date-idate).days):
+                    date = (idate + timedelta(days=d))
 
-                # add planned transaction tuple
-                for ix, ptransaction in self.planned_transactions.iterrows():
-                    if _is_planned_transaction(year=ptransaction['year'],
-                                               month=ptransaction['month'],
-                                               day=ptransaction['day'],
-                                               date=date):
-                        template['date'] = pd.to_datetime(date)
-                        template['transaction_num'] = 'na'
-                        template['description'] = ptransaction['description']
-                        template['interests'] = 0
-                        template['advance'] = ptransaction['withdrawal']
-                        template['reimboursment'] = ptransaction['deposit']
-                        template['balance'] = bal + ptransaction['withdrawal'] - ptransaction['deposit']
-                        template['code'] = ptransaction['code']
+                    # add planned transaction tuple
+                    for ix, ptransaction in self.planned_transactions.iterrows():
+                        if _is_planned_transaction(year=ptransaction['year'],
+                                                   month=ptransaction['month'],
+                                                   day=ptransaction['day'],
+                                                   date=date):
+                            template['date'] = pd.to_datetime(date)
+                            template['transaction_num'] = 'na'
+                            template['description'] = ptransaction['description']
+                            template['interests'] = 0
+                            template['advance'] = ptransaction['withdrawal']
+                            template['reimboursment'] = ptransaction['deposit']
+                            template['balance'] = bal + ptransaction['withdrawal'] - ptransaction['deposit']
+                            template['code'] = ptransaction['code']
 
-                        df = df.append(other=template, ignore_index=True)
-                        df.sort_values(by=['date', 'transaction_num'], inplace=True)
+                            df = df.append(other=template, ignore_index=True)
+                            df.sort_values(by=['date', 'transaction_num'], inplace=True)
 
-                        bal = template['balance']
+                            bal = template['balance']
 
-                # add average expenses to prediction
-                # if date.day == 20:
-                for expense_code in avg.index:
-                    if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
-                                            'credit', 'Impots & TPS']:
-                        template['date'] = pd.to_datetime(date)
-                        template['transaction_num'] = 'na'
-                        template['description'] = expense_code
-                        template['interests'] = 0
-                        template['advance'] = avg.loc[expense_code, 'total'] * (avg.loc[expense_code, 'total'] < 0)
-                        template['reimboursment'] = avg.loc[expense_code, 'total'] * (avg.loc[expense_code, 'total'] >= 0)
-                        template['balance'] = bal + template['reimboursment'] - template['advance']
-                        template['code'] = expense_code
+                    # add average expenses to prediction
+                    # if date.day == 20:
+                    for expense_code in avg.index:
+                        if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
+                                                'credit', 'Impots & TPS']:
+                            template['date'] = pd.to_datetime(date)
+                            template['transaction_num'] = 'na'
+                            template['description'] = expense_code
+                            template['interests'] = 0
+                            template['advance'] = avg.loc[expense_code, 'total'] * (avg.loc[expense_code, 'total'] < 0)
+                            template['reimboursment'] = avg.loc[expense_code, 'total'] * (avg.loc[expense_code, 'total'] >= 0)
+                            template['balance'] = bal + template['reimboursment'] - template['advance']
+                            template['code'] = expense_code
 
-                        df = df.append(other=template, ignore_index=True)
-                        df.sort_values(by=['date', 'transaction_num'], inplace=True)
+                            df = df.append(other=template, ignore_index=True)
+                            df.sort_values(by=['date', 'transaction_num'], inplace=True)
 
-                        bal = template['balance']
+                            bal = template['balance']
 
-            # add interest estimate
-            df['delta'] = df.date.diff().shift(-1)
-            df['delta'] = df.delta.array.days
-            df['cap_interest'] = np.multiply(df.balance, df.delta) * self.metadata.interest_rate / 365
-            df.replace(np.nan, 0, inplace=True)
+                # add interest estimate
+                df['delta'] = df.date.diff().shift(-1)
+                df['delta'] = df.delta.array.days
+                df['cap_interest'] = np.multiply(df.balance, df.delta) * self.metadata.interest_rate / 365
+                df.replace(np.nan, 0, inplace=True)
 
-            interest_sum = 0
-            for ix, row in df[self._get_last_interest_payment_index():].iterrows():
-                interest_sum += row['cap_interest']
-                if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
-                    df.loc[ix, 'interests'] = interest_sum
-                    interest_sum = 0
-                elif row['date'].day == 1 \
-                        and row['description'] == 'Avance au compte EOP (paiement intérêt)':
-                    df.loc[ix, 'advance'] = df.loc[ix - 1, 'interests']
-                    df.loc[ix, 'balance'] += df.loc[ix, 'advance']
+                interest_sum = 0
+                for ix, row in df[self._get_last_interest_payment_index():].iterrows():
+                    interest_sum += row['cap_interest']
+                    if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
+                        df.loc[ix, 'interests'] = interest_sum
+                        interest_sum = 0
+                    elif row['date'].day == 1 \
+                            and row['description'] == 'Avance au compte EOP (paiement intérêt)':
+                        df.loc[ix, 'advance'] = df.loc[ix - 1, 'interests']
+                        df.loc[ix, 'balance'] += df.loc[ix, 'advance']
 
-        else:
-            df = None
+                with open(os.path.join(pickle_dir, fname), 'wb') as file:
+                    pickle.dump(df, file=file)
+
+            else:
+                df = None
+
         return df
 
     def plot(self, year=None, month=None, day=None, show=False, figsize=(7, 8)):
@@ -752,9 +770,10 @@ class DesjardinsMC(Account):
                                 start_date: datetime.date = None,
                                 sim_date: datetime.date = None,
                                 show=False,
-                                fig_size=(7, 8)):
+                                fig_size=(7, 8),
+                                force_new: bool = False):
 
-        d1 = self.get_predicted_balance(end_date=end_date, sim_date=sim_date).copy()
+        d1 = self.get_predicted_balance(end_date=end_date, sim_date=sim_date, force_new=force_new).copy()
         d1.loc[:, 'balance'] = -1 * d1.loc[:, 'balance']
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
@@ -770,7 +789,8 @@ class DesjardinsMC(Account):
                  c='g')
         plt.plot(tmp['date'],
                  tmp['balance'],
-                 c='b')
+                 c='b',
+                 linestyle='--')
         plt.plot(d1.loc[d1['transaction_num'] == 'na', 'date'],
                  d1.loc[d1['transaction_num'] == 'na', 'balance'],
                  c='r')
@@ -789,7 +809,8 @@ class DesjardinsMC(Account):
                  c='g')
         plt.plot(tmp['date'],
                  tmp['balance'],
-                 c='k')
+                 c='k',
+                 linestyle='--')
         plt.plot(d2.loc[d2['transaction_num'] == 'na', 'date'],
                  d2.loc[d2['transaction_num'] == 'na', 'balance'],
                  c='b')
@@ -1371,9 +1392,13 @@ class Accounts:
             d = self.get_daily_average(year=year, month=month, day=day)
 
         if d is not None and d.shape[0] > 0:
+            expenses = d.loc[d['total'] < 0, 'total'].sum()
+            income = d.loc[d['total'] >= 0, 'total'].sum()
             title = f'{year} ' * (year is not None) + \
                     f'{month} ' * (month is not None) + \
-                    f'{day} ' * (day is not None) + f'All accounts'
+                    f'{day} ' * (day is not None) + f'All accounts\n' + \
+                    f'Expenses: {expenses:.2f}$, Income: {income:.2f}$, Total: {income+expenses:.2f}$'
+
             return _barplot_dataframe(d=d, title=title, show=show)
 
     def barplot_date_range(self, start_date: datetime.date, end_date: datetime.date, show=False, average: bool = False):
@@ -1382,9 +1407,11 @@ class Accounts:
             d = self.get_summed_data_date_range(start_date=start_date, end_date=end_date)
         else:
             d = self.get_data_range_daily_average(start_date=start_date, end_date=end_date)
-
+        expenses = d.loc[d['total'] < 0, 'total'].sum()
+        income = d.loc[d['total'] >= 0, 'total'].sum()
         if d is not None and d.shape[0] > 0:
-            title = f'{start_date} to  {end_date} All accounts'
+            title = f'{start_date} to  {end_date} All accounts\n' + \
+                    f'Expenses: {expenses:.2f}$, Income: {income:.2f}$, Total: {income+expenses:.2f}$'
             return _barplot_dataframe(d=d, title=title, show=show)
 
     def get_names(self):

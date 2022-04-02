@@ -113,3 +113,9 @@ def calculate_mc_interest(amount:float, days: int):
     """
     interest_rate = 0.0295 / 365.24
     return amount * (1+interest_rate) ** days
+
+
+root_dir = os.path.dirname(os.path.dirname(__file__))
+data_dir = os.path.join(root_dir, 'data')
+pickle_dir = os.path.join(root_dir, 'pickle_objects')
+
