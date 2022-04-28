@@ -15,7 +15,7 @@ def print_accounts_info():
 
 def plot_predictions(force_new: bool = False):
     start_date = datetime.date(year=2019, month=12, day=2)
-    sim_date = datetime.date(year=2022, month=2, day=15)
+    sim_date = datetime.date(year=2022, month=3, day=17)
     end_date = datetime.date(year=2022, month=12, day=31)
 
     desjardins_mc.plot_prediction_compare(start_date=start_date,
@@ -57,7 +57,7 @@ def bp_years(years, average=False):
 def bp_last_three_months(average=False):
     d = datetime.datetime.today().date()
     for i in [0, 1, 2]:
-        d = d - datetime.timedelta(days=(30 * i))
+        d = d - datetime.timedelta(days=(27 * i))
         accounts.barplot(year=d.year, month=d.month, show=True, average=average)
 
 
@@ -66,14 +66,9 @@ def bp_current_month():
                      month=datetime.datetime.today().month)
 
 
-def adhoc_test():
-    """ad hoc test"""
-    # desjardins_op.update_from_raw_files()
-
-
 if __name__ == "__main__":
     "tests"
     pred = desjardins_mc.get_predicted_balance(end_date=datetime.date(year=2022, month=4, day=2))
-    adhoc_test()
     bp_last_three_months()
-    plot_predictions()
+    cibc.update_from_raw_files()
+    plot_predictions(force_new=True)
