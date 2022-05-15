@@ -25,7 +25,7 @@ def start_gui():
     view = View()
 
     kwargs = {'year': 2021}
-    f = desjardins_op.barplot(average=True, **kwargs)
+    f = desjardins_op.barplot(**kwargs)
     view.inscribe_dataframe(desjardins_op.get_data(**kwargs))
     view.display_figure(fig=f)
 

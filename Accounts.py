@@ -1,3 +1,5 @@
+import json
+
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
@@ -54,13 +56,18 @@ class AccountMetadata:
     status: AccountStatus
 
 
-def _barplot_dataframe(d: pd.DataFrame, title: str, figsize=(7, 7), show=False):
+def _barplot_dataframe(d: pd.DataFrame, title: str, d_avg: pd.DataFrame = None, figsize=(7, 7), show=False):
     d = d.sort_values(by='total')
-    fig = plt.figure(figsize=figsize)
+    d_avg = d_avg.sort_values(by='total')
+    fig = plt.figure(figsize=figsize, num=title)
     clrs = ['green' if (x > 0) else 'red' for x in d['total']]
-    g = sns.barplot(x='total', y=d.index, data=d, palette=clrs, tick_label=str(d['total'].values))
-    for i, t in enumerate(d['total']):
-        g.text(x=(t*(t > 0) + 2), y=i, s=f'{t:.2f}')
+    if d_avg is not None:
+        tick_labels = [f"{val:.2f} ({val_avg:.2f})" for val, val_avg in zip(d['total'].values, d_avg['total'].values)]
+    else:
+        tick_labels = str(d['total'].values)
+    g = sns.barplot(x='total', y=d.index, data=d, palette=clrs, tick_label=tick_labels)
+    for i, (t, lbl) in enumerate(zip(d['total'], tick_labels)):
+        g.text(x=(t*(t > 0) + 2), y=i, s=lbl)
 
     plt.title(title)
     plt.subplots_adjust(left=0.25)
@@ -100,6 +107,8 @@ def _get_codes(cashflow: pd.DataFrame, description_column="description") -> pd.S
 
     assignations = pd.read_csv(os.path.join(data_dir, 'assignations.csv'), encoding='utf-8', sep=',').dropna(axis=1,
                                                                                                              how='all')
+    # assignations_v2 = json.load(os.path.join(data_dir, 'assignations.csv'))
+
     codes = list()
     for index, description in enumerate(descriptions):
         codes.append("na")
@@ -351,18 +360,16 @@ class Account(ABC):
         else:
             return d[self.metadata.columns_names]
 
-    def barplot(self, year=None, month=None, day=None, show=False, average: bool = False):
+    def barplot(self, year=None, month=None, day=None, show=False):
 
-        if not average:
-            d = self.get_summed_data(year=year, month=month, day=day)
-        else:
-            d = self.get_daily_average(year=year, month=month, day=day)
+        d = self.get_summed_data(year=year, month=month, day=day)
+        d_avg = self.get_daily_average(year=year, month=month, day=day)
 
         if d is not None and d.shape[0] > 0:
             title = f'{year} ' * (year is not None) + \
                     f'{month} ' * (month is not None) + \
                     f'{day} ' * (day is not None) + f'{self.get_name()}'
-            return _barplot_dataframe(d=d, title=title, show=show)
+            return _barplot_dataframe(d=d, title=title, d_avg=d_avg, show=show)
 
     def get_name(self):
         s = str(self.metadata.name).split('.')[1]
@@ -374,15 +381,15 @@ class Account(ABC):
 
     def apply_description_filter(self, pattern: str, regex=False):
         ret = self.transaction_data.loc[
-              self.transaction_data["description"].str.contains("Paiement /PAYPAL", regex=True), :]
+              self.transaction_data["description"].str.contains(pattern, regex=regex), :]
         return ret
 
-    def clear(self, year: int = -1, month: int = -1, day: int = -1):
-        year = datetime.date.year * (year == -1) + year  * (not (year == -1))
-        month = datetime.date.month * (month == -1) + month  * (not (month == -1))
+    def clear_month(self, year: int = -1, month: int = -1, inplace=False):
+        year = datetime.datetime.today().year * (year == -1) + year * (not (year == -1))
+        month = datetime.datetime.today().month * (month == -1) + month * (not (month == -1))
         ix = self.transaction_data[(self.transaction_data.date.array.year == year) &
-                                   (self.transaction_data.date.array.mont == month)].index
-        self.transaction_data.drop(labels=ix)
+                                   (self.transaction_data.date.array.month == month)].index
+        return self.transaction_data.drop(labels=ix, inplace=inplace)
 
     @abstractmethod
     def update_from_raw_files(self):
@@ -549,12 +556,12 @@ class DesjardinsMC(Account):
         """
         This function gives an estimation of the future balance of the account for a specified number of days. It
         uses the planned transaction data and optionally the average spending data.
-        :param end_date: daate at which the prediction ends
+        :param end_date: date at which the prediction ends
         :param sim_date: date at which the prediction starts
         :return: a Dataframe containing the predicted balance of the account
         """
 
-        fname = f'prd.pkl_{sim_date}_{end_date}'
+        fname = f'prd' + f'_{sim_date}' * (sim_date is not None) + f'_{end_date}.pkl'
         fpath = os.path.join(pickle_dir, fname)
         if os.path.exists(fpath) and not force_new:
             print(f'Prediction loaded from previous execution ({fpath})')
@@ -630,7 +637,7 @@ class DesjardinsMC(Account):
                 df.replace(np.nan, 0, inplace=True)
 
                 interest_sum = 0
-                for ix, row in df[self._get_last_interest_payment_index():].iterrows():
+                for ix, row in df[self._get_last_interest_payment_index(sim_date=sim_date):].iterrows():
                     interest_sum += row['cap_interest']
                     if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
                         df.loc[ix, 'interests'] = interest_sum
@@ -731,54 +738,55 @@ class DesjardinsMC(Account):
                                 fig_size=(7, 8),
                                 force_new: bool = False):
 
-        d1 = self.get_predicted_balance(end_date=end_date, sim_date=sim_date, force_new=force_new).copy()
-        d1.loc[:, 'balance'] = -1 * d1.loc[:, 'balance']
+        def plot_predictions(predictions: list):
+
+            for pred in predictions:
+
+                tmp = pred.loc[
+                      pred[pred['transaction_num'] == 'na'].index[0] - 1:pred[pred['transaction_num'] == 'na'].index[0]].copy()
+
+                plt.plot(pred.loc[pred['transaction_num'] != 'na', 'date'],
+                         pred.loc[pred['transaction_num'] != 'na', 'balance'],
+                         c='g')
+                plt.plot(tmp['date'],
+                         tmp['balance'],
+                         c='b',
+                         linestyle=':')
+                plt.plot(pred.loc[pred['transaction_num'] == 'na', 'date'],
+                         pred.loc[pred['transaction_num'] == 'na', 'balance'],
+                         c='b',
+                         linestyle='--')
+
+        estimations = list()
+
+        # past estimations
+        pred = self.get_predicted_balance(end_date=end_date, sim_date=sim_date, force_new=force_new).copy()
+        pred.loc[:, 'balance'] = -1 * pred.loc[:, 'balance']
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
-        d1 = d1[d1['date'].array.date > start_date]
-        d1.loc[:, 'date'] = d1.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+        pred = pred[pred['date'].array.date > start_date]
+        pred.loc[:, 'date'] = pred.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
 
-        fig = plt.figure(figsize=fig_size)
+        title = f'Prediction {start_date} to {end_date}'
+        fig = plt.figure(figsize=fig_size, num=title)
 
-        tmp = d1.loc[d1[d1['transaction_num']=='na'].index[0]-1:d1[d1['transaction_num']=='na'].index[0]].copy()
-
-        plt.plot(d1.loc[d1['transaction_num'] != 'na', 'date'],
-                 d1.loc[d1['transaction_num'] != 'na', 'balance'],
-                 c='g')
-        plt.plot(tmp['date'],
-                 tmp['balance'],
-                 c='b',
-                 linestyle='--')
-        plt.plot(d1.loc[d1['transaction_num'] == 'na', 'date'],
-                 d1.loc[d1['transaction_num'] == 'na', 'balance'],
-                 c='r')
-
-        d2 = self.get_predicted_balance(end_date=end_date, sim_date=None).copy()
-        d2.loc[:, 'balance'] = -1 * d2.loc[:, 'balance']
+        # current estimation
+        current_pred = self.get_predicted_balance(end_date=end_date, sim_date=None, force_new=force_new).copy()
+        current_pred.loc[:, 'balance'] = -1 * current_pred.loc[:, 'balance']
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
-        d2 = d2[d2['date'].array.date > start_date]
-        d2.loc[:, 'date'] = d2.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+        current_pred = current_pred[current_pred['date'].array.date > start_date]
+        current_pred.loc[:, 'date'] = current_pred.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
 
-        tmp = d2.loc[d2[d2['transaction_num'] == 'na'].index[0]-1:d2[d2['transaction_num'] == 'na'].index[0]].copy()
+        estimations.append(current_pred)
+        plot_predictions([pred, current_pred])
 
-        plt.plot(d2.loc[d2['transaction_num'] != 'na', 'date'],
-                 d2.loc[d2['transaction_num'] != 'na', 'balance'],
-                 c='g')
-        plt.plot(tmp['date'],
-                 tmp['balance'],
-                 c='k',
-                 linestyle='--')
-        plt.plot(d2.loc[d2['transaction_num'] == 'na', 'date'],
-                 d2.loc[d2['transaction_num'] == 'na', 'balance'],
-                 c='b')
-
-        plt.title(f'Prediction {start_date} to {end_date}')
+        plt.title(title)
         plt.grid(b=True, which='major', axis='both')
         plt.grid(b=True, which='minor', axis='x')
         plt.xticks(rotation=90)
-        min_y = min(d1.balance.min(), d2.balance.min())
-        max_y = max(d1.balance.max(), d2.balance.max())
+        min_y = min(pred.balance.min(), current_pred.balance.min())
+        max_y = max(pred.balance.max(), current_pred.balance.max())
         plt.yticks(ticks=np.arange(np.round(min_y - 1000, -3),
                                    np.round(max_y + 1000, -3),
                                    500))
@@ -792,8 +800,13 @@ class DesjardinsMC(Account):
     def _get_last_interest_payment_date(self) -> datetime.date:
         return (self.transaction_data[self.transaction_data['interests'] > 0]).tail(n=1).date.array.date[0]
 
-    def _get_last_interest_payment_index(self) -> datetime.date:
-        return (self.transaction_data[self.transaction_data['interests'] > 0]).tail(n=1).index[0]
+    def _get_last_interest_payment_index(self, sim_date: datetime.date = None) -> datetime.date:
+        if sim_date is not None:
+            res = (self.transaction_data[(self.transaction_data['interests'] > 0) &
+                                         (self.transaction_data['date'].array.date < sim_date)]).tail(n=1).index[0]
+        else:
+            res = (self.transaction_data[self.transaction_data['interests'] > 0]).tail(n=1).index[0]
+        return res
 
     def _get_next_interest_payment_date(self):
         d = self._get_last_interest_payment_date()
@@ -815,7 +828,7 @@ class DesjardinsPR(Account):
         if d.shape[0] > 0:
             d = d.loc[:, ['capital_paid', 'reimboursment', 'code']]
             d = d.groupby('code').sum()
-            d['total'] = np.subtract(d.loc[:, ['reimboursment']], d.loc[:, ['capital_paid']])
+            d['total'] = np.subtract(d.loc[:, ['capital_paid']], d.loc[:, ['reimboursment']])
             if 'internal_cashflow' in d.index:
                 d.drop(labels='internal_cashflow', inplace=True)
             d.drop(columns=['capital_paid', 'reimboursment'], inplace=True)
@@ -827,7 +840,7 @@ class DesjardinsPR(Account):
         if 'internal_cashflow' in d.index:
             d.drop(labels=['internal_cashflow'], inplace=True)
         if d.shape[0] > 0:
-            d['total'] = d['reimboursment'] - d['capital_paid']
+            d['total'] = d['capital_paid'] - d['reimboursment']
             d.drop(columns=['transaction_num', 'capital_paid', 'reimboursment', 'balance'], inplace=True)
         else:
             d = None
@@ -1383,35 +1396,36 @@ class Accounts:
 
         return d
 
-    def barplot(self, year=None, month=None, day=None, show=False, average: bool = False):
+    def barplot(self, year=None, month=None, day=None, show=False):
 
-        if not average:
-            d = self.get_summed_data(year=year, month=month, day=day)
-        else:
-            d = self.get_daily_average(year=year, month=month, day=day)
+        d = self.get_summed_data(year=year, month=month, day=day)
+        d_avg = self.get_daily_average(year=year, month=month, day=day)
 
         if d is not None and d.shape[0] > 0:
             expenses = d.loc[d['total'] < 0, 'total'].sum()
             income = d.loc[d['total'] >= 0, 'total'].sum()
+            expenses_avg = d_avg.loc[d['total'] < 0, 'total'].sum()
+            income_avg = d_avg.loc[d['total'] >= 0, 'total'].sum()
             title = f'{year} ' * (year is not None) + \
                     f'{month} ' * (month is not None) + \
                     f'{day} ' * (day is not None) + f'All accounts\n' + \
-                    f'Expenses: {expenses:.2f}$, Income: {income:.2f}$, Total: {income+expenses:.2f}$'
+                    f'Expenses: {expenses:.2f}({expenses_avg:.2f})$, ' \
+                    f'Income: {income:.2f}({income_avg:.2f})$, ' \
+                    f'Total: {income+expenses:.2f}({income_avg+expenses_avg:.2f})$'
 
-            return _barplot_dataframe(d=d, title=title, show=show)
+            return _barplot_dataframe(d=d, title=title, d_avg=d_avg, show=show)
 
-    def barplot_date_range(self, start_date: datetime.date, end_date: datetime.date, show=False, average: bool = False):
+    def barplot_date_range(self, start_date: datetime.date, end_date: datetime.date, show=False):
 
-        if not average:
-            d = self.get_summed_data_date_range(start_date=start_date, end_date=end_date)
-        else:
-            d = self.get_data_range_daily_average(start_date=start_date, end_date=end_date)
+        d = self.get_summed_data_date_range(start_date=start_date, end_date=end_date)
+        d_avg = self.get_data_range_daily_average(start_date=start_date, end_date=end_date)
+
         expenses = d.loc[d['total'] < 0, 'total'].sum()
         income = d.loc[d['total'] >= 0, 'total'].sum()
         if d is not None and d.shape[0] > 0:
             title = f'{start_date} to  {end_date} All accounts\n' + \
                     f'Expenses: {expenses:.2f}$, Income: {income:.2f}$, Total: {income+expenses:.2f}$'
-            return _barplot_dataframe(d=d, title=title, show=show)
+            return _barplot_dataframe(d=d, title=title, d_avg=d_avg, show=show)
 
     def get_names(self):
         name_list = list()
@@ -1437,7 +1451,6 @@ Create account objects
 base_dir = os.path.dirname(os.path.abspath(__file__))
 os.path.abspath(__file__)
 data_dir = os.path.join(base_dir, 'data')
-pickle_dir = os.path.join(base_dir, 'pickle_objects')
 
 # ==============
 # Desjardins OP
@@ -1452,7 +1465,6 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            interest_rate=0,
                            name=AccountNames.DESJARDINS_OP,
                            columns_names=names,
-                           # unique_keys=['date', 'transaction_num'],
                            type=AccountType.OPERATIONS,
                            status=AccountStatus.OPEN)
 desjardins_op = DesjardinsOP(lmetadata=metadata)
@@ -1467,7 +1479,6 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            interest_rate=0.0295,
                            name=AccountNames.DESJARDINS_MC,
                            columns_names=names,
-                           # unique_keys=['date', 'transaction_num'],
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_mc = DesjardinsMC(lmetadata=metadata)

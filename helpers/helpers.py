@@ -49,9 +49,6 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
     """
     switch_week = False
     pay_day_counts = [0, 0]
-    daily_hours = 7.5
-    hourly_rate = 35.9
-    clear_pay_rate = 0.6887
 
     # LTI pays are max 16 days after pay period (fix dates pays)
     end_date = end_date + datetime.timedelta(days=16)
@@ -85,12 +82,6 @@ def print_pay_dates(start_date: datetime.date = datetime.datetime.today().date()
             print(f'pay,{date.year},{date.month},{date.day},0,1200,pay')
 
 
-sdate = datetime.date(year=2021, month=8, day=5)
-edate = datetime.date(year=2021, month=9, day=30)
-
-print_pay_dates(start_date=sdate, end_date=edate)
-
-
 def calculate_pay(days: int, clear=True):
     """
     Calculates the pay for a given number of work days
@@ -100,7 +91,7 @@ def calculate_pay(days: int, clear=True):
     """
 
     daily_hours = 7.5
-    hourly_rate = 35.9
+    hourly_rate = 35.9 * 1.05
     rate = 0.6887 if clear else 1
     return round(days * daily_hours * hourly_rate * rate, 2)
 
@@ -119,3 +110,9 @@ root_dir = os.path.dirname(os.path.dirname(__file__))
 data_dir = os.path.join(root_dir, 'data')
 pickle_dir = os.path.join(root_dir, 'pickle_objects')
 
+
+if __name__ == "__main__":
+    sdate = datetime.date(year=2022, month=11, day=16)
+    edate = datetime.date(year=2023, month=11, day=15)
+
+    print_lti_pays(start_date=sdate, end_date=edate)
