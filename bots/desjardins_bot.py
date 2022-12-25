@@ -16,7 +16,7 @@ from selenium.webdriver.chrome.options import Options
 from getpass import getpass
 
 import Accounts
-from helpers.helpers import print_step, get_project_root
+from utils.utils import print_step, get_project_root
 
 
 def quit_browser():

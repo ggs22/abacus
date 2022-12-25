@@ -8,7 +8,7 @@ from selenium.webdriver.support import expected_conditions as ec
 from selenium.webdriver.chrome.options import Options
 from getpass import getpass
 
-from helpers.helpers import print_step, get_project_root, get_css_selector_from_html
+from utils.utils import print_step, get_project_root, get_css_selector_from_html
 
 
 def quit_browser():

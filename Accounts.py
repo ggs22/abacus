@@ -1,5 +1,5 @@
 import json
-
+import random
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import numpy as np
@@ -16,10 +16,7 @@ from enum import Enum
 from abc import abstractmethod, ABC
 from datetime import timedelta
 from dateutil.relativedelta import relativedelta
-from helpers import helpers
-from helpers.helpers import root_dir, pickle_dir
-
-import helpers.helpers
+from utils.utils import pickle_dir, months_map, data_dir
 
 
 class AccountNames(Enum):
@@ -51,9 +48,14 @@ class AccountMetadata:
     interest_rate: float
     name: AccountNames
     columns_names: list
+    assignation_file_path: str
     # unique_keys: list
     type: AccountType
     status: AccountStatus
+
+
+def take_docstring(fn):
+    fn.__doc__ = sns.relplot.__doc__
 
 
 def _barplot_dataframe(d: pd.DataFrame, title: str, d_avg: pd.DataFrame = None, figsize=(7, 7), show=False):
@@ -76,7 +78,7 @@ def _barplot_dataframe(d: pd.DataFrame, title: str, d_avg: pd.DataFrame = None, 
     return fig
 
 
-def _print_codes_menu(codes, transaction):
+def print_codes_menu(codes, transaction):
     """
     Prints a CLI menu for manual transaction code assignation
     :param codes: List of possible transaction codes
@@ -92,7 +94,7 @@ def _print_codes_menu(codes, transaction):
     print()
 
 
-def _get_codes(cashflow: pd.DataFrame, description_column="description") -> pd.Series:
+def get_common_codes(cashflow: pd.DataFrame, description_column="description") -> pd.Series:
     """
     This function returns a vector corresponding to all transaction code associated to the description vector given
     as argument
@@ -105,38 +107,20 @@ def _get_codes(cashflow: pd.DataFrame, description_column="description") -> pd.S
 
     descriptions = cashflow.loc[:, description_column]
 
-    assignations = pd.read_csv(os.path.join(data_dir, 'assignations.csv'), encoding='utf-8', sep=',').dropna(axis=1,
-                                                                                                             how='all')
-    # assignations_v2 = json.load(os.path.join(data_dir, 'assignations.csv'))
+    common_assignations_path = os.path.join(data_dir, 'assignation.json')
+    if not os.path.exists(common_assignations_path):
+        raise IOError(f"Assignation file not found at {os.path.join(data_dir, 'assignation.json')}")
+    with open(os.path.join(data_dir, 'assignation.json'), 'r') as f:
+        assignations = json.load(f)
 
     codes = list()
     for index, description in enumerate(descriptions):
         codes.append("na")
-        for col in assignations.iteritems():
-            for row in col[1].dropna(axis=0):
-                if description.lower().find(row.lower()) != -1:
-                    codes[len(codes) - 1] = col[0]
+        for code, assignations_list in assignations.items():
+            for assignation in assignations_list:
+                if description.lower().find(assignation.lower()) != -1:
+                    codes[len(codes) - 1] = code
                     break
-        if codes[-1:] == ['na']:
-            show_menu = True
-            while show_menu:
-                _print_codes_menu(assignations.columns, cashflow.iloc[index].dropna().to_string())
-                code = input()
-                if code != 'na':
-                    try:
-                        code = int(code)
-                        if code <= 0 or code > len(assignations.columns.values):
-                            print(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
-                                  f'Please enter a number between 1 and {len(assignations.columns)}')
-                        else:
-                            code = assignations.columns.values[code - 1]
-                            codes[-1:] = [code]
-                            show_menu = False
-                    except ValueError:
-                        print(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
-                              f'Please enter a number between 1 and {len(assignations.columns)}')
-                else:
-                    show_menu = False
 
     return pd.Series(codes)
 
@@ -169,6 +153,7 @@ class Account(ABC):
 
         self.metadata = lmetadata
         self.transaction_data = None
+        self.col_mask = None
         self._load_from_raw_files()
         if self.transaction_data is not None:
             self.most_recent_date = self.transaction_data.tail(n=1).date
@@ -211,7 +196,7 @@ class Account(ABC):
             d = self.get_data_by_date_range(start_date=start_date, end_date=end_date).loc[:, self.col_mask]
         else:
             d = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
-        return d.groupby(by='code').sum()
+        return d.groupby(by='code').sum(numeric_only=True)
 
     def get_date_range_data_std(self, start_date: datetime.date, end_date: datetime.date):
         if self.col_mask is not None:
@@ -242,6 +227,7 @@ class Account(ABC):
         :return: daily average spending per spending code
         """
 
+        delta = 0
         if day is not None:
             delta = 1
         elif day is None and month is not None:
@@ -269,25 +255,14 @@ class Account(ABC):
         :param start_date: last date of date range
         :return: daily average spending per spending code for a given date rage
         """
-
-        summed_data = self.get_summed_date_range_data(start_date=start_date, end_date=end_date)
-        if summed_data is not None:
-            delta = (end_date - start_date).days
-            if delta == 0:
-                res = summed_data
-            else:
-                res = np.divide(summed_data, delta)
-        else:
-            res = None
-
-        return res
+        raise NotImplementedError(f"The \"get_date_range_daily_average\" method has not been implementted for "
+                                  f"the {self.__class__} class!")
 
     def get_data_by_code(self, code: str, year=None, month=None, day=None):
         d = self.get_data(year=year, month=month, day=day)
         return d.loc[d['code'] == code]
 
     def _load_from_raw_files(self, update_data=False) -> None:
-        # TODO keep a record of processed raw files as to avoid reprocessing them in updates
         df = None
         if os.path.exists(self.metadata.serialized_object_path) and not update_data:
             with open(self.metadata.serialized_object_path, 'rb') as save_file:
@@ -315,7 +290,7 @@ class Account(ABC):
                 cash_flow['date'] = pd.to_datetime(cash_flow['date'], format='%Y-%m-%d')
 
             # Adds column,and inputs transaction code
-            cash_flow['code'] = _get_codes(cash_flow)
+            cash_flow['code'] = get_common_codes(cash_flow)
             cash_flow = cash_flow.replace(np.nan, 0)
             cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
             cash_flow.sort_values(by=['date'], ascending=True, inplace=True)
@@ -389,7 +364,7 @@ class Account(ABC):
         month = datetime.datetime.today().month * (month == -1) + month * (not (month == -1))
         ix = self.transaction_data[(self.transaction_data.date.array.year == year) &
                                    (self.transaction_data.date.array.month == month)].index
-        return self.transaction_data.drop(labels=ix, inplace=inplace)
+        self.transaction_data.drop(labels=ix, inplace=inplace)
 
     @abstractmethod
     def update_from_raw_files(self):
@@ -398,6 +373,58 @@ class Account(ABC):
     @abstractmethod
     def get_predicted_balance(self):
         """Each account type has its own prediction method"""
+
+    def get_account_specific_codes(self, cashflow: pd.DataFrame, description_column="description") -> pd.Series:
+        """
+        This function returns a vector corresponding to all transaction code associated to the description vector given
+        as argument
+
+        args:
+            - description   A vector of transaction description (often reffered to as "object, item, description, etc."
+                            in bank statements). The relations between the descriptions and the codes are contained in
+                            "assignations.csv"
+        """
+        descriptions = cashflow.loc[:, description_column]
+
+        account_assignations_path = self.metadata.assignation_file_path
+        if not os.path.exists(account_assignations_path):
+            raise IOError(f"Assignation file not found at {account_assignations_path}")
+        with open(account_assignations_path, 'r') as f:
+            assignations = json.load(f)
+
+        codes = list()
+        for index, description in enumerate(descriptions):
+            codes.append("na")
+            code_headers = list()
+            for code, assignations_list in assignations.items():
+                code_headers.append(code)
+                if assignations_list is not []:
+                    for assignation in assignations_list:
+                        if description.lower().find(assignation.lower()) != -1:
+                            codes[len(codes) - 1] = code
+                            break
+        if codes[-1:] == ['na']:
+            show_menu = True
+            while show_menu:
+                print_codes_menu(code_headers, cashflow.iloc[index].dropna().to_string())
+                code = input()
+                if code != 'na':
+                    try:
+                        code = int(code)
+                        if code <= 0 or code > len(code_headers):
+                            print(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
+                                  f'Please enter a number between 1 and {len(code_headers)}')
+                        else:
+                            code = code_headers[code - 1]
+                            codes[-1:] = [code]
+                            show_menu = False
+                    except ValueError:
+                        print(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
+                              f'Please enter a number between 1 and {len(assignations.columns)}')
+                else:
+                    show_menu = False
+
+        return pd.Series(codes)
 
 
 class DesjardinsOP(Account):
@@ -429,8 +456,52 @@ class DesjardinsOP(Account):
         return d
 
     def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
-        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
-        return d
+
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
+
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if range_data.shape[0] > 0:
+            withdrawals = range_data.loc[range_data.withdrawal > 0, :].copy()
+            deposits = range_data.loc[range_data.deposit > 0, :].copy()
+
+            columns = withdrawals.columns
+            deposits_ix = (columns == 'deposit') | (columns == 'code')
+            withdrawals_ix = (columns == 'withdrawal') | (columns == 'code')
+            withdrawals.drop(axis=1, columns=withdrawals.columns[~withdrawals_ix], inplace=True)
+            deposits.drop(axis=1, columns=deposits.columns[~deposits_ix], inplace=True)
+
+            withdrawals_counts = withdrawals.groupby(by='code').count()
+            deposits_counts = deposits.groupby(by='code').count()
+
+            withdrawals_freqs = np.divide(withdrawals_counts, delta)
+            deposits_freqs = np.divide(deposits_counts, delta)
+
+            daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer').replace(np.nan, 0)
+
+            withdrawals_mean = withdrawals.groupby(by='code').mean()
+            deposits_mean = deposits.groupby(by='code').mean()
+
+            means = withdrawals_mean.join(other=deposits_mean, how='outer').replace(np.nan, 0)
+
+            withdrawals_std = withdrawals.groupby(by='code').std()
+            deposits_std = deposits.groupby(by='code').std()
+
+            std_devs = withdrawals_std.join(other=deposits_std, how='outer').replace(np.nan, 0)
+
+            daily_means = np.multiply(means, daily_freqs)
+            daily_std = np.multiply(std_devs, daily_freqs)
+
+            daily_means.withdrawal *= -1
+
+            daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+            daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+        else:
+            daily_means, daily_std = None, None
+
+        return daily_means, daily_std
 
     def update_from_raw_files(self):
         new_entries = 0
@@ -441,13 +512,17 @@ class DesjardinsOP(Account):
                                   encoding='latin1',
                                   names=self.metadata.columns_names)
                 for ix, row in new.iterrows():
+                    # TODO transaction number-based duplication detection logic is not valid for
+                    #  partial monthly statement downloads
                     if (row['date'], row['transaction_num']) in self.transaction_data.set_index(
                             keys=['date', 'transaction_num']).index:
                         continue
                     else:
                         if row['account'] == 'EOP':
                             row['date'] = pd.to_datetime(row['date'], format='%Y-%m-%d')
-                            row['code'] = _get_codes(pd.DataFrame(row).T).values[0]
+                            row['code'] = get_common_codes(pd.DataFrame(row).T).values[0]
+                            if row['code'] == "na":
+                                row['code'] = self.get_account_specific_codes(pd.DataFrame(row).T).values[0]
                             row.replace(np.nan, 0, inplace=True)
                             self.transaction_data = self.transaction_data.append(other=row, ignore_index=True)
                             new_entries += 1
@@ -459,6 +534,7 @@ class DesjardinsOP(Account):
             print(f'{new_entries} new entries added')
             if self._save_prompt():
                 self.to_pickle()
+
 
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
         df = self.get_data()
@@ -518,6 +594,55 @@ class DesjardinsMC(Account):
             d = None
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
+
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if range_data.shape[0] > 0:
+            withdrawals = range_data.loc[(range_data.advance > 0) | (range_data.interests > 0), :].copy()
+            deposits = range_data.loc[range_data.reimboursment > 0, :].copy()
+
+            columns = withdrawals.columns
+            deposits_ix = (columns == 'reimboursment') | (columns == 'code')
+            withdrawals_ix = (columns == 'interests') | (columns == 'advance') | (columns == 'code')
+            withdrawals.drop(axis=1, columns=withdrawals.columns[~withdrawals_ix], inplace=True)
+            deposits.drop(axis=1, columns=deposits.columns[~deposits_ix], inplace=True)
+
+            withdrawals_counts = withdrawals.groupby(by='code').count()
+            deposits_counts = deposits.groupby(by='code').count()
+
+            withdrawals_freqs = np.divide(withdrawals_counts, delta)
+            deposits_freqs = np.divide(deposits_counts, delta)
+
+            daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer').replace(np.nan, 0)
+
+            withdrawals_mean = withdrawals.groupby(by='code').mean()
+            deposits_mean = deposits.groupby(by='code').mean()
+
+            means = withdrawals_mean.join(other=deposits_mean, how='outer').replace(np.nan, 0)
+
+            withdrawals_std = withdrawals.groupby(by='code').std()
+            deposits_std = deposits.groupby(by='code').std()
+
+            std_devs = withdrawals_std.join(other=deposits_std, how='outer').replace(np.nan, 0)
+
+            daily_means = np.multiply(means, daily_freqs)
+            daily_std = np.multiply(std_devs, daily_freqs)
+
+            daily_means.interests *= -1
+            daily_means.advance *= -1
+
+            daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+            daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+        else:
+            daily_means, daily_std = None, None
+
+        return daily_means, daily_std
+
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
 
@@ -536,7 +661,7 @@ class DesjardinsMC(Account):
                     else:
                         if row['account'] == 'MC2':
                             row['date'] = pd.to_datetime(row['date'], format='%Y-%m-%d')
-                            row['code'] = _get_codes(pd.DataFrame(row).T).values[0]
+                            row['code'] = get_common_codes(pd.DataFrame(row).T).values[0]
                             row.replace(np.nan, 0, inplace=True)
                             self.transaction_data = self.transaction_data.append(other=row, ignore_index=True)
                             new_entries += 1
@@ -580,12 +705,26 @@ class DesjardinsMC(Account):
                 df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
 
             # prepare start date for date range average
-            sdate = idate - datetime.timedelta(days=365 )
-            avg = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
+            sdate = idate - datetime.timedelta(days=2 * 365)
+            avg, std = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
 
             if self.planned_transactions is not None:
-                template = df.tail(1).copy(deep=True)
-                bal = template.balance.values[0]
+                bal = [df.tail(1).balance.values[0]].copy()
+                bals = {-3: bal.copy(),
+                        -2: bal.copy(),
+                        -1: bal.copy(),
+                        -0: bal.copy(),
+                        1: bal.copy(),
+                        2: bal.copy(),
+                        3: bal.copy()}
+                template = {'date': list(),
+                            'transaction_num': list(),
+                            'description': list(),
+                            'interests': list(),
+                            'advance': list(),
+                            'reimboursment': list(),
+                            'balance': list(),
+                            'code': list()}
 
                 # for each day in the projection
                 for d in range(1, (end_date-idate).days):
@@ -597,17 +736,14 @@ class DesjardinsMC(Account):
                                                    month=ptransaction['month'],
                                                    day=ptransaction['day'],
                                                    date=date):
-                            template['date'] = pd.to_datetime(date)
-                            template['transaction_num'] = 'na'
-                            template['description'] = ptransaction['description']
-                            template['interests'] = 0
-                            template['advance'] = ptransaction['withdrawal']
-                            template['reimboursment'] = ptransaction['deposit']
-                            template['balance'] = bal + ptransaction['withdrawal'] - ptransaction['deposit']
-                            template['code'] = ptransaction['code']
-
-                            df = df.append(other=template, ignore_index=True)
-                            df.sort_values(by=['date', 'transaction_num'], inplace=True)
+                            template['date'].append(pd.to_datetime(date))
+                            template['transaction_num'].append('planned')
+                            template['description'].append(ptransaction['description'])
+                            template['interests'].append(0)
+                            template['advance'].append(ptransaction['withdrawal'])
+                            template['reimboursment'].append(ptransaction['deposit'])
+                            template['balance'].append(bal[-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit'])
+                            template['code'].append(ptransaction['code'])
 
                             bal = template['balance']
 
@@ -616,36 +752,44 @@ class DesjardinsMC(Account):
                     for expense_code in avg.index:
                         if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
                                                 'credit', 'Impots & TPS']:
-                            template['date'] = pd.to_datetime(date)
-                            template['transaction_num'] = 'na'
-                            template['description'] = expense_code
-                            template['interests'] = 0
-                            template['advance'] = avg.loc[expense_code, 'total'] * (avg.loc[expense_code, 'total'] < 0)
-                            template['reimboursment'] = avg.loc[expense_code, 'total'] * (avg.loc[expense_code, 'total'] >= 0)
-                            template['balance'] = bal + template['reimboursment'] - template['advance']
-                            template['code'] = expense_code
 
-                            df = df.append(other=template, ignore_index=True)
-                            df.sort_values(by=['date', 'transaction_num'], inplace=True)
+                            for m in range(-3, 4):
+                                template['date'].append(pd.to_datetime(date))
+                                t_num = f'std_{str(m)}' * (m != 0) + f'mean' * (m == 0)
+                                template['transaction_num'].append(t_num)
+                                template['description'].append(expense_code)
+                                template['interests'].append(0)
+                                amount = (avg.loc[expense_code, 'total_mean'] + m * std.loc[expense_code, 'total_std'])
+                                template['advance'].append(amount * (avg.loc[expense_code, 'total_mean'] < 0))
+                                template['reimboursment'].append(amount * (avg.loc[expense_code, 'total_mean'] >= 0))
+                                template['balance'].append(bals[m][-1:][0] + template['reimboursment'][-1:][0] - template['advance'][-1:][0])
+                                template['code'].append(expense_code)
 
-                            bal = template['balance']
+                                bals[m].append(bals[m][-1:][0] + template['reimboursment'][-1:][0] - template['advance'][-1:][0])
+
+                df_pred = pd.DataFrame(template)
 
                 # add interest estimate
-                df['delta'] = df.date.diff().shift(-1)
-                df['delta'] = df.delta.array.days
-                df['cap_interest'] = np.multiply(df.balance, df.delta) * self.metadata.interest_rate / 365
-                df.replace(np.nan, 0, inplace=True)
+                df_pred['delta'] = df_pred.date.diff().shift(-1)
+                df_pred['delta'] = df_pred.delta.array.days
+                df_pred['cap_interest'] = np.multiply(df_pred.balance, df_pred.delta) * self.metadata.interest_rate / 365
+
+                df_pred.replace(np.nan, 0, inplace=True)
+                df_pred.sort_values(by=['date', 'transaction_num'], inplace=True)
 
                 interest_sum = 0
-                for ix, row in df[self._get_last_interest_payment_index(sim_date=sim_date):].iterrows():
+                for ix, row in df_pred[self._get_last_interest_payment_index(sim_date=sim_date):].iterrows():
                     interest_sum += row['cap_interest']
                     if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
-                        df.loc[ix, 'interests'] = interest_sum
+                        df_pred.loc[ix, 'interests'] = interest_sum
                         interest_sum = 0
                     elif row['date'].day == 1 \
                             and row['description'] == 'Avance au compte EOP (paiement intérêt)':
-                        df.loc[ix, 'advance'] = df.loc[ix - 1, 'interests']
-                        df.loc[ix, 'balance'] += df.loc[ix, 'advance']
+                        df_pred.loc[ix, 'advance'] = df_pred.loc[ix - 1, 'interests']
+                        df_pred.loc[ix, 'balance'] += df_pred.loc[ix, 'advance']
+
+                df = pd.concat([df, df_pred])
+                df.reset_index(drop=True, inplace=True)
 
                 with open(os.path.join(pickle_dir, fname), 'wb') as file:
                     pickle.dump(df, file=file)
@@ -739,21 +883,41 @@ class DesjardinsMC(Account):
                                 force_new: bool = False):
 
         def plot_predictions(predictions: list):
-
             for pred in predictions:
 
-                tmp = pred.loc[
-                      pred[pred['transaction_num'] == 'na'].index[0] - 1:pred[pred['transaction_num'] == 'na'].index[0]].copy()
+                prediction_ix = pred[pred['transaction_num'] == 'mean'].index[0]
 
-                plt.plot(pred.loc[pred['transaction_num'] != 'na', 'date'],
-                         pred.loc[pred['transaction_num'] != 'na', 'balance'],
+                # the gap between actual data and predictions
+                gap = pred.loc[prediction_ix - 1:prediction_ix].copy()
+
+                # plot current balance
+                plt.plot(pred.loc[0:prediction_ix, 'date'],
+                         pred.loc[0:prediction_ix, 'balance'],
                          c='g')
-                plt.plot(tmp['date'],
-                         tmp['balance'],
+
+                # plot a line for the gap
+                plt.plot(gap['date'],
+                         gap['balance'],
                          c='b',
                          linestyle=':')
-                plt.plot(pred.loc[pred['transaction_num'] == 'na', 'date'],
-                         pred.loc[pred['transaction_num'] == 'na', 'balance'],
+
+                # fill between positive and negative std deviations
+                plt.fill_between(x=pred.loc[pred['transaction_num'] == 'std_-3', 'date'],
+                                 y1=pred.loc[pred['transaction_num'] == 'std_-3', 'balance'],
+                                 y2=pred.loc[pred['transaction_num'] == 'std_3', 'balance'],
+                                 alpha=.3,)
+                plt.fill_between(x=pred.loc[pred['transaction_num'] == 'std_-2', 'date'],
+                                 y1=pred.loc[pred['transaction_num'] == 'std_-2', 'balance'],
+                                 y2=pred.loc[pred['transaction_num'] == 'std_2', 'balance'],
+                                 alpha=.5)
+                plt.fill_between(x=pred.loc[pred['transaction_num'] == 'std_-1', 'date'],
+                                 y1=pred.loc[pred['transaction_num'] == 'std_-1', 'balance'],
+                                 y2=pred.loc[pred['transaction_num'] == 'std_1', 'balance'],
+                                 alpha=.7)
+
+                # plot mean
+                plt.plot(pred.loc[pred['transaction_num'] == 'mean', 'date'],
+                         pred.loc[pred['transaction_num'] == 'mean', 'balance'],
                          c='b',
                          linestyle='--')
 
@@ -765,7 +929,7 @@ class DesjardinsMC(Account):
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
         pred = pred[pred['date'].array.date > start_date]
-        pred.loc[:, 'date'] = pred.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+        pred.date = pred.date.apply(func=lambda i: str(i).replace(' 00:00:00', ''))
 
         title = f'Prediction {start_date} to {end_date}'
         fig = plt.figure(figsize=fig_size, num=title)
@@ -776,7 +940,7 @@ class DesjardinsMC(Account):
         if start_date is None:
             start_date = datetime.datetime.today().date() - timedelta(days=7)
         current_pred = current_pred[current_pred['date'].array.date > start_date]
-        current_pred.loc[:, 'date'] = current_pred.loc[:, 'date'].apply(lambda i: str(i).replace(' 00:00:00', ''))
+        current_pred.date = current_pred.date.apply(lambda i: str(i).replace(' 00:00:00', ''))
 
         estimations.append(current_pred)
         plot_predictions([pred, current_pred])
@@ -846,6 +1010,54 @@ class DesjardinsPR(Account):
             d = None
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
+
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if range_data.shape[0] > 0:
+
+            withdrawals = range_data.loc[range_data.advance > 0, :].copy()
+            deposits = range_data.loc[range_data.reimboursment > 0, :].copy()
+
+            columns = withdrawals.columns
+            deposits_ix = (columns == 'reimboursment') | (columns == 'code')
+            withdrawals_ix = (columns == 'advance') | (columns == 'code')
+            withdrawals.drop(axis=1, columns=withdrawals.columns[~withdrawals_ix], inplace=True)
+            deposits.drop(axis=1, columns=deposits.columns[~deposits_ix], inplace=True)
+
+            withdrawals_counts = withdrawals.groupby(by='code').count()
+            deposits_counts = deposits.groupby(by='code').count()
+
+            withdrawals_freqs = np.divide(withdrawals_counts, delta)
+            deposits_freqs = np.divide(deposits_counts, delta)
+
+            daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer').replace(np.nan, 0)
+
+            withdrawals_mean = withdrawals.groupby(by='code').mean()
+            deposits_mean = deposits.groupby(by='code').mean()
+
+            means = withdrawals_mean.join(other=deposits_mean, how='outer').replace(np.nan, 0)
+
+            withdrawals_std = withdrawals.groupby(by='code').std()
+            deposits_std = deposits.groupby(by='code').std()
+
+            std_devs = withdrawals_std.join(other=deposits_std, how='outer').replace(np.nan, 0)
+
+            daily_means = np.multiply(means, daily_freqs)
+            daily_std = np.multiply(std_devs, daily_freqs)
+
+            daily_means.advance *= -1
+
+            daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+            daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+        else:
+            daily_means, daily_std = None, None
+
+        return daily_means, daily_std
+
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
 
@@ -864,7 +1076,7 @@ class DesjardinsPR(Account):
                     else:
                         if row['account'] == 'PR1':
                             row['date'] = pd.to_datetime(row['date'], format='%Y-%m-%d')
-                            row['code'] = _get_codes(pd.DataFrame(row).T).values[0]
+                            row['code'] = get_common_codes(pd.DataFrame(row).T).values[0]
                             row.replace(np.nan, 0, inplace=True)
                             self.transaction_data = self.transaction_data.append(other=row, ignore_index=True)
                             new_entries += 1
@@ -943,7 +1155,6 @@ class VisaPP(Account):
                 cash_flow = cash_flow.append(payments, ignore_index=True)
 
             elif x[-4:] == '.txt':
-                # TODO make this snippet more elegant
                 tnumber_prefixes, ix = ['e', 'p'], 0
                 with open(os.path.join(self.metadata.raw_files_dir, x), 'r') as raw_file:
                     for i, line in enumerate(raw_file):
@@ -991,7 +1202,7 @@ class VisaPP(Account):
         cash_flow['credit/payment'] = pd.to_numeric(cash_flow['credit/payment'])
         cash_flow['balance'] = cash_flow['credit/payment'].cumsum()
         cash_flow.reset_index(inplace=True, drop=True)
-        cash_flow['code'] = _get_codes(cash_flow)
+        cash_flow['code'] = get_common_codes(cash_flow)
 
         return cash_flow
 
@@ -1015,14 +1226,56 @@ class VisaPP(Account):
             d = None
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
+
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if range_data.shape[0] > 0:
+            withdrawals = range_data[range_data['credit/payment'] < 0]
+            deposits = range_data[range_data['credit/payment'] > 0]
+
+            columns = withdrawals.columns
+            ix = (columns == 'credit/payment') | (columns == 'code')
+            withdrawals.drop(axis=1, columns=withdrawals.columns[~ix], inplace=True)
+            deposits.drop(axis=1, columns=deposits.columns[~ix], inplace=True)
+
+            withdrawals_counts = withdrawals.groupby(by='code').count()
+            deposits_counts = deposits.groupby(by='code').count()
+
+            withdrawals_freqs = np.divide(withdrawals_counts, delta)
+            deposits_freqs = np.divide(deposits_counts, delta)
+
+            daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer', lsuffix="_out").replace(np.nan, 0)
+
+            withdrawals_mean = withdrawals.groupby(by='code').mean()
+            deposits_mean = deposits.groupby(by='code').mean()
+
+            means = withdrawals_mean.join(other=deposits_mean, how='outer', lsuffix="_out").replace(np.nan, 0)
+
+            withdrawals_std = withdrawals.groupby(by='code').std()
+            deposits_std = deposits.groupby(by='code').std()
+
+            std_devs = withdrawals_std.join(other=deposits_std, how='outer', lsuffix='_out').replace(np.nan, 0)
+
+            daily_means = np.multiply(means, daily_freqs)
+            daily_std = np.multiply(std_devs, daily_freqs)
+
+            daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+            daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+        else:
+            daily_means, daily_std = None, None
+
+        return daily_means, daily_std
+
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
 
-    # TODO implement update method for VISA pp credit card
     def update_from_raw_files(self):
-        pass
+        raise RuntimeError(f"This account is: {self.metadata.status.name}")
 
-    # TODO implement prediction method
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
         df = self.get_data()
         return df
@@ -1058,6 +1311,54 @@ class CapitalOne(Account):
             d = None
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
+
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if range_data.shape[0] > 0:
+            withdrawals = range_data[range_data.debit > 0]
+            deposits = range_data[range_data.credit > 0]
+
+            columns = withdrawals.columns
+            deposits_ix = (columns == 'credit') | (columns == 'code')
+            withdrawals_ix = (columns == 'debit') | (columns == 'code')
+            withdrawals.drop(axis=1, columns=withdrawals.columns[~withdrawals_ix], inplace=True)
+            deposits.drop(axis=1, columns=deposits.columns[~deposits_ix], inplace=True)
+
+            withdrawals_counts = withdrawals.groupby(by='code').count()
+            deposits_counts = deposits.groupby(by='code').count()
+
+            withdrawals_freqs = np.divide(withdrawals_counts, delta)
+            deposits_freqs = np.divide(deposits_counts, delta)
+
+            daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer').replace(np.nan, 0)
+
+            withdrawals_mean = withdrawals.groupby(by='code').mean()
+            deposits_mean = deposits.groupby(by='code').mean()
+
+            means = withdrawals_mean.join(other=deposits_mean, how='outer').replace(np.nan, 0)
+
+            withdrawals_std = withdrawals.groupby(by='code').std()
+            deposits_std = deposits.groupby(by='code').std()
+
+            std_devs = withdrawals_std.join(other=deposits_std, how='outer').replace(np.nan, 0)
+
+            daily_means = np.multiply(means, daily_freqs)
+            daily_std = np.multiply(std_devs, daily_freqs)
+
+            daily_means.debit *= -1
+
+            daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+            daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+
+        else:
+            daily_means, daily_std = None, None
+
+        return daily_means, daily_std
+
     def update_from_raw_files(self):
         cash_flow = self.transaction_data
         old_entries_num = cash_flow.shape[0]
@@ -1086,7 +1387,7 @@ class CapitalOne(Account):
         cash_flow['debit'] = cash_flow['debit'].apply(lambda i: float(i))
         cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
         for ix, row in cash_flow[cash_flow['code'] == 0].iterrows():
-            cash_flow.loc[ix, 'code'] = _get_codes(pd.DataFrame(row).T).values[0]
+            cash_flow.loc[ix, 'code'] = get_common_codes(pd.DataFrame(row).T).values[0]
 
         new_entries = cash_flow.shape[0] - old_entries_num
         if new_entries > 0:
@@ -1129,6 +1430,54 @@ class CIBC(Account):
             d = None
         return d
 
+    def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
+
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        if range_data.shape[0] > 0:
+            withdrawals = range_data.loc[range_data.debit > 0, :].copy()
+            deposits = range_data.loc[range_data.credit > 0, :].copy()
+
+            columns = withdrawals.columns
+            deposits_ix = (columns == 'credit') | (columns == 'code')
+            withdrawals_ix = (columns == 'debit') | (columns == 'code')
+            withdrawals.drop(axis=1, columns=withdrawals.columns[~withdrawals_ix], inplace=True)
+            deposits.drop(axis=1, columns=deposits.columns[~deposits_ix], inplace=True)
+
+            withdrawals_counts = withdrawals.groupby(by='code').count()
+            deposits_counts = deposits.groupby(by='code').count()
+
+            withdrawals_freqs = np.divide(withdrawals_counts, delta)
+            deposits_freqs = np.divide(deposits_counts, delta)
+
+            daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer').replace(np.nan, 0)
+
+            withdrawals_mean = withdrawals.groupby(by='code').mean()
+            deposits_mean = deposits.groupby(by='code').mean()
+
+            means = withdrawals_mean.join(other=deposits_mean, how='outer').replace(np.nan, 0)
+
+            withdrawals_std = withdrawals.groupby(by='code').std()
+            deposits_std = deposits.groupby(by='code').std()
+
+            std_devs = withdrawals_std.join(other=deposits_std, how='outer').replace(np.nan, 0)
+
+            daily_means = np.multiply(means, daily_freqs)
+            daily_std = np.multiply(std_devs, daily_freqs)
+
+            daily_means.debit *= -1
+            daily_std.debit *= -1
+
+            daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+            daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+        else:
+            daily_means, daily_std = None, None
+
+        return daily_means, daily_std
+
     def update_from_raw_files(self):
         cash_flow = self.transaction_data
         old_entries_num = cash_flow.shape[0]
@@ -1155,7 +1504,9 @@ class CIBC(Account):
         cash_flow['debit'] = cash_flow['debit'].apply(lambda i: float(i))
         cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
         for ix, row in cash_flow[cash_flow['code'] == 0].iterrows():
-            cash_flow.loc[ix, 'code'] = _get_codes(pd.DataFrame(row).T).values[0]
+            cash_flow.loc[ix, 'code'] = get_common_codes(pd.DataFrame(row).T).values[0]
+            if cash_flow.loc[ix, 'code'] == "na":
+                cash_flow.loc[ix, 'code'] = self.get_account_specific_codes(pd.DataFrame(row).T).values[0]
 
         new_entries = cash_flow.shape[0] - old_entries_num
         if new_entries > 0:
@@ -1173,7 +1524,7 @@ class PayPal(Account):
         super().__init__(lmetadata=lmetadata)
         self.col_mask = ['date', 'description', 'currency', 'amount', 'balance', 'code']
 
-    # TODO refactor to load data in parent class and process it
+    # TTODO refactor to load data in parent class and process it
     # def _load_from_raw_files(self) -> pd.DataFrame:
     #     if self.metadata.raw_files_dir == '':
     #         raise ValueError('please specify a path for Desjardins CSV files')
@@ -1251,14 +1602,46 @@ class PayPal(Account):
         return d
 
     def get_date_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
-        d = super().get_date_range_daily_average(start_date=start_date, end_date=end_date)
-        if d is not None:
-            if 'internal_cashflow' in d.index:
-                d.drop(labels=['internal_cashflow'], inplace=True)
-            if 'amount' in d.columns:
-                d.drop(columns=['amount'], inplace=True)
-        return d
+        # calculate the number of days in the date range
+        delta = (end_date - start_date).days
 
+        # get data and separate deposits from withdrawals
+        range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
+
+        withdrawals = range_data[range_data.amount > 0]
+        deposits = range_data[range_data.amount > 0]
+
+        columns = withdrawals.columns
+        deposits_ix = (columns == 'deposit') | (columns == 'code')
+        withdrawals_ix = (columns == 'withdrawal') | (columns == 'code')
+        withdrawals.drop(axis=1, columns=withdrawals.columns[~withdrawals_ix], inplace=True)
+        deposits.drop(axis=1, columns=deposits.columns[~deposits_ix], inplace=True)
+
+        withdrawals_counts = withdrawals.groupby(by='code').count()
+        deposits_counts = deposits.groupby(by='code').count()
+
+        withdrawals_freqs = np.divide(withdrawals_counts, delta)
+        deposits_freqs = np.divide(deposits_counts, delta)
+
+        daily_freqs = withdrawals_freqs.join(other=deposits_freqs, how='outer').replace(np.nan, 0)
+
+        withdrawals_mean = withdrawals.groupby(by='code').mean()
+        deposits_mean = deposits.groupby(by='code').mean()
+
+        means = withdrawals_mean.join(other=deposits_mean, how='outer').replace(np.nan, 0)
+
+        withdrawals_std = withdrawals.groupby(by='code').std()
+        deposits_std = deposits.groupby(by='code').std()
+
+        std_devs = withdrawals_std.join(other=deposits_std, how='outer').replace(np.nan, 0)
+
+        daily_means = np.multiply(means, daily_freqs)
+        daily_std = np.multiply(std_devs, daily_freqs)
+
+        daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
+        daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+
+        return daily_means, daily_std
     def update_from_raw_files(self):
         if self.metadata.raw_files_dir == '':
             raise ValueError('please specify a path for Desjardins CSV files')
@@ -1312,7 +1695,7 @@ class PayPal(Account):
         cash_flow.reset_index(inplace=True, drop=True)
         print("this and then some...")
         # TODO fix this, nan being assign after manual code entry
-        cash_flow['code'] = _get_codes(cash_flow)
+        cash_flow['code'] = get_common_codes(cash_flow)
         l1 = self.transaction_data.shape[0]
         self.transaction_data = self.transaction_data.append(cash_flow)
         self.transaction_data.drop_duplicates(inplace=True)
@@ -1340,6 +1723,9 @@ class Accounts:
 
     def __iter__(self):
         yield from self.accounts_list
+
+    def __len__(self):
+        return len(self.accounts_list)
 
     def get_summed_data(self, year=None, month=None, day=None):
         sum_l = list()
@@ -1369,7 +1755,7 @@ class Accounts:
         av_l = list()
         d = None
         for acc in self.accounts_list:
-            t = acc.get_daily_average(year=year, month=month, day=day)
+            t, s = acc.get_daily_average(year=year, month=month, day=day)
             if t is not None:
                 av_l.append(t)
         if len(av_l) > 0:
@@ -1379,14 +1765,19 @@ class Accounts:
 
     def get_data_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
         av_l = list()
+        std_l = list()
         d = None
+        s = None
         for acc in self.accounts_list:
-            t = acc.get_date_range_daily_average(start_date=start_date, end_date=end_date)
-            if t is not None:
-                av_l.append(t)
+            daily_means, range_std = acc.get_date_range_daily_average(start_date=start_date, end_date=end_date)
+            if daily_means is not None:
+                av_l.append(daily_means)
+                std_l.append(range_std)
         if len(av_l) > 0:
             d = pd.concat(av_l)
             d = d.groupby(by='code').sum()
+            s = pd.concat(std_l)
+            s = s.groupby(by='code').sum()
 
         if d is not None:
             if 'transaction_num' in d.columns:
@@ -1394,7 +1785,7 @@ class Accounts:
             if 'internal_cashflow' in d.index:
                 d.drop(labels=['internal_cashflow'], inplace=True)
 
-        return d
+        return d, s
 
     def barplot(self, year=None, month=None, day=None, show=False):
 
@@ -1444,14 +1835,49 @@ class Accounts:
                 break
         return res
 
+    def get_most_recent_transaction_date(self):
+        max_date = datetime.date(year=2000, month=1, day=1)
+        for account in self:
+            if max_date < account.most_recent_date.array.date[0]:
+                max_date = account.most_recent_date.array.date[0]
+        return max_date
+
+    def get_yearly_summary(self, year: int = None):
+        most_recent_transaction_date = self.get_most_recent_transaction_date()
+        year = most_recent_transaction_date.year if year is None else year
+        df_ = pd.DataFrame()
+        end_month = 12 if year < datetime.datetime.today().year else most_recent_transaction_date.month
+        for month in range(1, end_month + 1):
+            summed_data = self.get_summed_data(year=year, month=month)
+            if summed_data is not None:
+                df_ = df_.join(other=summed_data, how='outer')
+                df_.rename(columns={'total': f'{months_map[month][0]}'}, inplace=True)
+
+        df_.replace(np.nan, 0, inplace=True)
+        return df_
+
+    def plot_yearly_summary(self, year: int = None, columns: list = None):
+        year = self.get_most_recent_transaction_date().year if year is None else year
+        data = self.get_yearly_summary(year=year).T
+        data['expenses'] = data.loc[:, data.columns[data.columns != 'pay']].sum(axis=1)
+        data['income'] = data[data > 0].sum(axis=1)
+        data['total'] = data.sum(axis=1)
+        data = data.loc[:, [*columns, 'expenses', 'income', 'total']] if columns is not None else data
+        line_styles = ['-', '--', '-.', ':']
+        for ix, (name, col) in enumerate(data.iteritems()):
+            sel = ix % len(line_styles)
+            style = line_styles[sel]
+            color = (sel * 0.2 % 1.0 + 0.2, random.random(), random.random())
+            plt.plot(col, c=color, linestyle=style, label=name)
+        # sns.relplot(data=data, kind='line', palette='muted')
+        plt.legend()
+        plt.xticks(rotation=90)
+        plt.show()
+
 
 """
 Create account objects
 """
-base_dir = os.path.dirname(os.path.abspath(__file__))
-os.path.abspath(__file__)
-data_dir = os.path.join(base_dir, 'data')
-
 # ==============
 # Desjardins OP
 # ==============
@@ -1465,6 +1891,7 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            interest_rate=0,
                            name=AccountNames.DESJARDINS_OP,
                            columns_names=names,
+                           assignation_file_path=os.path.join(data_dir, 'assignations_desjardins_op.json'),
                            type=AccountType.OPERATIONS,
                            status=AccountStatus.OPEN)
 desjardins_op = DesjardinsOP(lmetadata=metadata)
@@ -1476,9 +1903,10 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_mc.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.csv'),
-                           interest_rate=0.0295,
+                           interest_rate=0.0645,
                            name=AccountNames.DESJARDINS_MC,
                            columns_names=names,
+                           assignation_file_path='',
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_mc = DesjardinsMC(lmetadata=metadata)
@@ -1490,10 +1918,10 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_pr.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.csv'),
-                           interest_rate=0.045,
+                           interest_rate=0.052 ,
                            name=AccountNames.DESJARDINS_PR,
                            columns_names=names,
-                           # unique_keys=['date', 'transaction_num'],
+                           assignation_file_path='',
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_pr = DesjardinsPR(lmetadata=metadata)
@@ -1510,6 +1938,7 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_ppca
                            interest_rate=0,
                            name=AccountNames.VISA_PP,
                            columns_names=names,
+                           assignation_file_path='',
                            type=AccountType.PREPAID,
                            status=AccountStatus.OPEN)
 visapp = VisaPP(lmetadata=metadata)
@@ -1525,6 +1954,7 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'capital_one_csv
                            interest_rate=0,
                            name=AccountNames.CAPITAL_ONE,
                            columns_names=names,
+                           assignation_file_path='',
                            type=AccountType.CREDIT,
                            status=AccountStatus.CLOSED)
 capital_one = CapitalOne(lmetadata=metadata)
@@ -1540,6 +1970,7 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'cibc_csv_files'
                            interest_rate=0,
                            name=AccountNames.CIBC,
                            columns_names=names,
+                           assignation_file_path=os.path.join(data_dir, 'assignations_cibc.json'),
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 cibc = CIBC(lmetadata=metadata)
@@ -1555,19 +1986,16 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'paypal_csv_file
                            interest_rate=0,
                            name=AccountNames.PAYPAL,
                            columns_names=names,
+                           assignation_file_path='',
                            type=AccountType.PREPAID,
-                           status=AccountStatus.OPEN)
+                           status=AccountStatus.CLOSED)
 paypal = PayPal(lmetadata=metadata)
 
-accounts_list = list()
-
-accounts_list.append(desjardins_op)
-accounts_list.append(desjardins_mc)
-accounts_list.append(desjardins_pr)
-accounts_list.append(visapp)
-accounts_list.append(capital_one)
-accounts_list.append(cibc)
-accounts_list.append(paypal)
-
-accounts = Accounts(l_accounts_list=accounts_list.copy())
-del accounts_list
+# Create the Accounts object allowing to integrate the data of all the accounts
+accounts = Accounts(l_accounts_list=[desjardins_op,
+                                     desjardins_mc,
+                                     desjardins_pr,
+                                     visapp,
+                                     capital_one,
+                                     cibc,
+                                     paypal])

@@ -91,7 +91,7 @@ def calculate_pay(days: int, clear=True):
     """
 
     daily_hours = 7.5
-    hourly_rate = 35.9 * 1.05
+    hourly_rate = (85000/1950)
     rate = 0.6887 if clear else 1
     return round(days * daily_hours * hourly_rate * rate, 2)
 
@@ -110,6 +110,20 @@ root_dir = os.path.dirname(os.path.dirname(__file__))
 data_dir = os.path.join(root_dir, 'data')
 pickle_dir = os.path.join(root_dir, 'pickle_objects')
 
+months_map = {
+    1: ["january", 31],
+    2: ["february", 28],
+    3: ["march", 31],
+    4: ["april", 30],
+    5: ["may", 31],
+    6: ["june", 30],
+    7: ["july", 31],
+    8: ["august", 31],
+    9: ["september", 30],
+    10: ["october", 31],
+    11: ["november", 30],
+    12: ["december", 31]
+}
 
 if __name__ == "__main__":
     sdate = datetime.date(year=2022, month=11, day=16)
