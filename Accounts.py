@@ -190,7 +190,7 @@ class Account(ABC):
             d = self.get_data_by_date(year=year, month=month, day=day).loc[:, self.col_mask]
         else:
             d = self.get_data_by_date(year=year, month=month, day=day)
-        return d.groupby(by='code').sum()
+        return d.groupby(by='code').sum(numeric_only=True)
 
     def get_summed_date_range_data(self, start_date: datetime.date, end_date: datetime.date):
         if self.col_mask is not None:
@@ -748,10 +748,11 @@ class DesjardinsMC(Account):
                                 template['interests'].append(0)
                                 template['advance'].append(ptransaction['withdrawal'])
                                 template['reimboursment'].append(ptransaction['deposit'])
-                                template['balance'].append(bals[m][-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit'])
+                                amount = bals[m][-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
+                                template['balance'].append(amount)
                                 template['code'].append(ptransaction['code'])
 
-                                bals[m].append(bals[m][-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit'])
+                                bals[m].append(amount)
 
                     # add average expenses to prediction
                     # if date.day == 20:
@@ -766,8 +767,8 @@ class DesjardinsMC(Account):
                                 template['description'].append(expense_code)
                                 template['interests'].append(0)
                                 amount = round((avg.loc[expense_code, 'total_mean'] + m * std.loc[expense_code, 'total_std']), 2)
-                                template['advance'].append(amount * (avg.loc[expense_code, 'total_mean'] < 0))
-                                template['reimboursment'].append(amount * (avg.loc[expense_code, 'total_mean'] >= 0))
+                                template['advance'].append(min(amount, 0) * (avg.loc[expense_code, 'total_mean'] < 0))
+                                template['reimboursment'].append(max(amount, 0) * (avg.loc[expense_code, 'total_mean'] >= 0))
                                 template['balance'].append(bals[m][-1:][0] + template['reimboursment'][-1:][0] - template['advance'][-1:][0])
                                 template['code'].append(expense_code)
 
@@ -1030,7 +1031,7 @@ class DesjardinsPR(Account):
         if d.shape[0] > 0:
             d = d.loc[:, ['capital_paid', 'reimboursment', 'code']]
             d = d.groupby('code').sum()
-            d['total'] = np.subtract(d.loc[:, ['capital_paid']], d.loc[:, ['reimboursment']])
+            d['total'] = np.subtract(d.loc[:, ['capital_paid']], np.asarray(d.loc[:, ['reimboursment']]))
             if 'internal_cashflow' in d.index:
                 d.drop(labels='internal_cashflow', inplace=True)
             d.drop(columns=['capital_paid', 'reimboursment'], inplace=True)
@@ -1795,7 +1796,7 @@ class Accounts:
         av_l = list()
         d = None
         for acc in self.accounts_list:
-            t, s = acc.get_daily_average(year=year, month=month, day=day)
+            t = acc.get_daily_average(year=year, month=month, day=day)
             if t is not None:
                 av_l.append(t)
         if len(av_l) > 0:

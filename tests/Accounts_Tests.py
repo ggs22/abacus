@@ -24,7 +24,7 @@ def plot_predictions(force_new: bool = False):
                                           end_date=end_date,
                                           show=True,
                                           force_new=force_new,
-                                           avg_interval=365)
+                                          avg_interval=180)
 
 
 def get_averages():
