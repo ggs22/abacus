@@ -22,7 +22,9 @@ def plot_predictions(force_new: bool = False):
     desjardins_mc.plot_prediction_compare(start_date=start_date,
                                           sim_date=sim_date,
                                           end_date=end_date,
-                                          show=True, force_new=force_new)
+                                          show=True,
+                                          force_new=force_new,
+                                           avg_interval=365)
 
 
 def get_averages():
