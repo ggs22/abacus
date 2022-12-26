@@ -748,11 +748,11 @@ class DesjardinsMC(Account):
                                 template['interests'].append(0)
                                 template['advance'].append(ptransaction['withdrawal'])
                                 template['reimboursment'].append(ptransaction['deposit'])
-                                amount = bals[m][-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
-                                template['balance'].append(amount)
+                                balance = bals[m][-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
+                                template['balance'].append(balance)
                                 template['code'].append(ptransaction['code'])
 
-                                bals[m].append(amount)
+                                bals[m].append(balance)
 
                     # add average expenses to prediction
                     # if date.day == 20:
