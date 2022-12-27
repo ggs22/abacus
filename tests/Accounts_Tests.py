@@ -67,6 +67,6 @@ if __name__ == "__main__":
 
     plot_predictions(force_new=True)
     # print(accounts.get_most_recent_transaction_date())
-    # bp_last_months(12)
+    bp_last_months(12)
     # yearly_summary = accounts.get_yearly_summary(year=2022)
     # accounts.plot_yearly_summary(year=2022, columns=yearly_summary.index[yearly_summary.index != 'pay'])
