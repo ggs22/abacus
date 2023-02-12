@@ -15,16 +15,20 @@ def print_accounts_info():
 
 
 def plot_predictions(force_new: bool = False):
-    start_date = datetime.date(year=2019, month=12, day=2)
-    sim_date = datetime.date(year=2022, month=12, day=6)
-    end_date = datetime.date(year=2023, month=11, day=30)
+    start_date = datetime.date(year=2022, month=1, day=1)
+    sim_dates = list()
+    sim_dates += [datetime.date(year=2023, month=1, day=15)]
+    # for i in range(3, 0, -1):
+    #     sim_dates += [datetime.date(year=2022, month=(12 - i), day=6)]
+    end_date = datetime.date(year=2023, month=3, day=31)
 
     desjardins_mc.plot_prediction_compare(start_date=start_date,
-                                          sim_date=sim_date,
+                                          sim_dates=sim_dates,
                                           end_date=end_date,
                                           show=True,
                                           force_new=force_new,
-                                          avg_interval=180)
+                                          avg_interval=365,
+                                          montecarl_iterations=200)
 
 
 def get_averages():

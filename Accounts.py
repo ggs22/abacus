@@ -18,6 +18,7 @@ from datetime import timedelta
 from dateutil.relativedelta import relativedelta
 from utils.utils import pickle_dir, months_map, data_dir
 from tqdm import tqdm
+from typing import List, Union
 
 
 class AccountNames(Enum):
@@ -496,13 +497,15 @@ class DesjardinsOP(Account):
             daily_std = np.multiply(std_devs, daily_freqs)
 
             daily_means.withdrawal *= -1
+            daily_freqs.withdrawal *= -1
 
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
         else:
-            daily_means, daily_std = None, None
+            daily_means, daily_std, daily_freqs = None, None, None
 
-        return daily_means, daily_std
+        return daily_means, daily_std, daily_freqs
 
     def update_from_raw_files(self):
         new_entries = 0
@@ -636,13 +639,16 @@ class DesjardinsMC(Account):
 
             daily_means.interests *= -1
             daily_means.advance *= -1
+            daily_freqs.interests *= -1
+            daily_freqs.advance *= -1
 
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
         else:
-            daily_means, daily_std = None, None
+            daily_means, daily_std, daily_freqs = None, None, None
 
-        return daily_means, daily_std
+        return daily_means, daily_std, daily_freqs
 
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
@@ -679,7 +685,8 @@ class DesjardinsMC(Account):
                               end_date: datetime.date,
                               sim_date: datetime.date = None,
                               force_new: bool = False,
-                              avg_interval: int = 90) -> pd.DataFrame:
+                              avg_interval: int = 90,
+                              montecarl_iterations=3) -> pd.DataFrame:
         """
         This function gives an estimation of the future balance of the account for a specified number of days. It
         uses the planned transaction data and optionally the average spending data.
@@ -707,31 +714,36 @@ class DesjardinsMC(Account):
                 idate = sim_date
                 df.drop(labels=df[df['date'] > str(sim_date)].index, inplace=True)
 
-            # prepare start date for date range average
+            # Get the average, std dev. and daily freqencies of transaction for the specified time interval
             sdate = idate - datetime.timedelta(days=avg_interval)
-            avg, std = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
+            avg, std, freqs = accounts.get_data_range_daily_average(start_date=sdate, end_date=idate)
 
-            if self.planned_transactions is not None:
-                bal = [df.tail(1).balance.values[0]].copy()
-                bals = {-3: bal.copy(),
-                        -2: bal.copy(),
-                        -1: bal.copy(),
-                        -0: bal.copy(),
-                        1: bal.copy(),
-                        2: bal.copy(),
-                        3: bal.copy()}
-                template = {'date': list(),
-                            'transaction_num': list(),
-                            'description': list(),
-                            'interests': list(),
-                            'advance': list(),
-                            'reimboursment': list(),
-                            'balance': list(),
-                            'code': list()}
+            # balances_list = list()
+            balances_list = [df.tail(1).balance.values[0]].copy()
+            initial_bal_value = balances_list[0]
+            transaction_tuples = {'date': list(),
+                                  'transaction_num': list(),
+                                  'description': list(),
+                                  'interests': list(),
+                                  'advance': list(),
+                                  'reimboursment': list(),
+                                  'balance': list(),
+                                  'code': list()}
 
+            # Monte carlo iterations
+            t_num_mc_prefix = 0
+            digit_num = int(np.log10(montecarl_iterations)) + 1
+            for mc_it in tqdm(range(0, montecarl_iterations),
+                          position=0,
+                          leave=False,
+                          desc='Monte-Carlo iterations'):
                 # for each day in the projection
-                for d in tqdm(range(1, (end_date-idate).days)):
-                    date = (idate + timedelta(days=d))
+                for delta_days in tqdm(range(1, (end_date-idate).days),
+                                       position=1,
+                                       leave=False,
+                                       desc='Projected days'):
+                    date = (idate + timedelta(days=delta_days))
+                    t_num_date_prefix = 0
 
                     # add planned transaction tuple
                     for ix, ptransaction in self.planned_transactions.iterrows():
@@ -740,69 +752,127 @@ class DesjardinsMC(Account):
                                                    day=ptransaction['day'],
                                                    date=date):
 
-                            for m in range(-3, 4):
-                                template['date'].append(pd.to_datetime(date))
-                                t_num = f'std_{str(m)}' * (m != 0) + f'mean' * (m == 0)
-                                template['transaction_num'].append(f'{t_num}_planned')
-                                template['description'].append(ptransaction['description'])
-                                template['interests'].append(0)
-                                template['advance'].append(ptransaction['withdrawal'])
-                                template['reimboursment'].append(ptransaction['deposit'])
-                                balance = bals[m][-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
-                                template['balance'].append(balance)
-                                template['code'].append(ptransaction['code'])
+                            transaction_tuples['date'].append(pd.to_datetime(date))
+                            transaction_tuples['transaction_num'].append(f'{t_num_mc_prefix:0{digit_num}d}_'
+                                                                         f'{t_num_date_prefix:03d}_'
+                                                                         f'planned')
+                            transaction_tuples['description'].append(ptransaction['description'])
+                            transaction_tuples['interests'].append(0)
+                            transaction_tuples['advance'].append(ptransaction['withdrawal'])
+                            transaction_tuples['reimboursment'].append(ptransaction['deposit'])
+                            balance = balances_list[-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
+                            transaction_tuples['balance'].append(balance)
+                            transaction_tuples['code'].append(ptransaction['code'])
 
-                                bals[m].append(balance)
+                            balances_list.append(balance)
+                            t_num_date_prefix += 1
 
                     # add average expenses to prediction
-                    # if date.day == 20:
                     for expense_code in avg.index:
-                        if expense_code not in ['internet', 'rent', 'pay', 'cell', 'hydro', 'interest', 'other',
-                                                'credit', 'Impots & TPS']:
+                        if expense_code.lower() not in ['internet', 'rent', 'pay',
+                                                        'cell', 'hydro', 'interest', 'other',
+                                                        'credit', 'impots & tps', 'trading']:
 
-                            for m in range(-3, 4):
-                                template['date'].append(pd.to_datetime(date))
-                                t_num = f'std_{str(m)}' * (m != 0) + f'mean' * (m == 0)
-                                template['transaction_num'].append(t_num)
-                                template['description'].append(expense_code)
-                                template['interests'].append(0)
-                                amount = round((avg.loc[expense_code, 'total_mean'] + m * std.loc[expense_code, 'total_std']), 2)
-                                template['advance'].append(min(amount, 0) * (avg.loc[expense_code, 'total_mean'] < 0))
-                                template['reimboursment'].append(max(amount, 0) * (avg.loc[expense_code, 'total_mean'] >= 0))
-                                template['balance'].append(bals[m][-1:][0] + template['reimboursment'][-1:][0] - template['advance'][-1:][0])
-                                template['code'].append(expense_code)
+                            # if mean_inscribed:
+                            # compute probabilistic threshold of transaction occurence
+                            amount = random.gauss(mu=avg.loc[expense_code, 'total_mean'] / freqs.loc[expense_code, 'total_freq'],
+                                                  sigma=std.loc[expense_code, 'total_std'] / freqs.loc[expense_code, 'total_freq'])
+                            # amount = avg.loc[expense_code, 'total_mean'] / freqs.loc[expense_code, 'total_freq']
+                            amount *= np.sign(avg.loc[expense_code, 'total_mean'])
+                            amount = round(amount, 2)
+                            thresh_prob = random.uniform(0, 1)
+                            event_prob = abs(freqs.loc[expense_code, 'total_freq'])
+                            amount = amount * (thresh_prob < event_prob)
+                            amount = min(amount, 0) * (avg.loc[expense_code, 'total_mean'] < 0) + \
+                                     max(amount, 0) * (avg.loc[expense_code, 'total_mean'] >= 0)
 
-                                bals[m].append(bals[m][-1:][0] + template['reimboursment'][-1:][0] - template['advance'][-1:][0])
+                            if amount != 0:
+                                transaction_tuples['date'].append(pd.to_datetime(date))
+                                transaction_tuples['transaction_num'].append(f'{t_num_mc_prefix:0{digit_num}d}_'
+                                                                             f'{t_num_date_prefix:03d}_'
+                                                                             f'mc_expected')
+                                transaction_tuples['description'].append(expense_code)
+                                transaction_tuples['interests'].append(0)
+                                transaction_tuples['advance'].append(
+                                    abs(amount) * (avg.loc[expense_code, 'total_mean'] < 0))
+                                transaction_tuples['reimboursment'].append(
+                                    abs(amount) * (avg.loc[expense_code, 'total_mean'] >= 0))
+                                balance = balances_list[-1:][0] - transaction_tuples['reimboursment'][-1:][0] + \
+                                          transaction_tuples['advance'][-1:][0]
+                                transaction_tuples['balance'].append(balance)
+                                transaction_tuples['code'].append(expense_code)
 
-                df_pred = pd.DataFrame(template)
+                                balances_list.append(balance)
+                                t_num_date_prefix += 1
 
-                # add interest estimate
-                df_pred['delta'] = df_pred.date.diff().shift(-1)
-                df_pred['delta'] = df_pred.delta.array.days
-                df_pred['cap_interest'] = np.multiply(df_pred.balance, df_pred.delta) * self.metadata.interest_rate / 365
+                            if mc_it == 0:
+                                amount = round(avg.loc[expense_code, 'total_mean'], 2)
 
-                df_pred.replace(np.nan, 0, inplace=True)
-                df_pred.sort_values(by=['date', 'transaction_num'], inplace=True)
+                                transaction_tuples['date'].append(pd.to_datetime(date))
+                                transaction_tuples['transaction_num'].append(f'{t_num_mc_prefix:0{digit_num}d}_'
+                                                                             f'{t_num_date_prefix:03d}_'
+                                                                             f'mean_expected')
+                                transaction_tuples['description'].append(expense_code)
+                                transaction_tuples['interests'].append(0)
+                                transaction_tuples['advance'].append(abs(amount) * (avg.loc[expense_code, 'total_mean'] < 0))
+                                transaction_tuples['reimboursment'].append(abs(amount) * (avg.loc[expense_code, 'total_mean'] >= 0))
+                                balance = balances_list[-1:][0] - transaction_tuples['reimboursment'][-1:][0] + transaction_tuples['advance'][-1:][0]
+                                transaction_tuples['balance'].append(balance)
+                                transaction_tuples['code'].append(expense_code)
 
-                interest_sum = 0
-                for ix, row in df_pred[self._get_last_interest_payment_index(sim_date=sim_date):].iterrows():
-                    interest_sum += row['cap_interest']
-                    if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
-                        df_pred.loc[ix, 'interests'] = interest_sum
-                        interest_sum = 0
-                    elif row['date'].day == 1 \
-                            and row['description'] == 'Avance au compte EOP (paiement intérêt)':
-                        df_pred.loc[ix, 'advance'] = df_pred.loc[ix - 1, 'interests']
-                        df_pred.loc[ix, 'balance'] += df_pred.loc[ix, 'advance']
+                                balances_list.append(balance)
+                                t_num_date_prefix += 1
 
-                df = pd.concat([df, df_pred])
-                df.reset_index(drop=True, inplace=True)
+                if montecarl_iterations > 1:
+                    # insert montecarlo reset tuple
+                    transaction_tuples['date'].append(pd.to_datetime(idate))
+                    transaction_tuples['transaction_num'].append(f'montecarlo_reset')
+                    transaction_tuples['description'].append(expense_code)
+                    transaction_tuples['interests'].append(0)
+                    transaction_tuples['advance'].append(1)
+                    transaction_tuples['reimboursment'].append(1)
+                    balance = initial_bal_value
+                    transaction_tuples['balance'].append(balance)
+                    transaction_tuples['code'].append('na')
 
-                with open(os.path.join(pickle_dir, fname), 'wb') as file:
-                    pickle.dump(df, file=file)
+                    balances_list.append(initial_bal_value)
+                    t_num_mc_prefix += 1
 
-            else:
-                df = None
+            df_pred = pd.DataFrame(transaction_tuples)
+
+            # add interest estimate
+            df_pred.sort_values(by=['date', 'transaction_num'], inplace=True)
+            df_pred['delta'] = df_pred.date.diff().shift(-1)
+            df_pred['delta'] = df_pred.delta.array.days
+            df_pred['cap_interest'] = np.multiply(df_pred.balance, df_pred.delta) * self.metadata.interest_rate / 365
+            df_pred.loc[df_pred['cap_interest'] < 0, 'cap_interest'] = 0
+            df_pred.replace(np.nan, 0, inplace=True)
+            df_pred.reset_index(drop=True, inplace=True)
+
+            interest_sum = 0
+            itt = iter(df_pred.iterrows())
+            for ix, row in itt:
+                interest_sum += row['cap_interest']
+                if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
+                    while row['date'].day == 1:
+                        if row['code'] == 'interest' and row['interests'] == 0:
+                            df_pred.loc[ix, 'interests'] = interest_sum
+                            df_pred.loc[ix, 'balance'] += interest_sum
+                        ix, row = next(itt)
+                    interest_sum = 0
+
+            df = pd.concat([df, df_pred]).sort_values(by=['date', 'transaction_num'])
+            df.dropna(axis=0, how='all', inplace=True)
+            ix = (df['interests'] == 0) &\
+                 (df['advance'] == 0) &\
+                 (df['reimboursment'] == 0) &\
+                 (df['transaction_num'] == "expected")
+            df.drop(labels=df.index[ix], axis=0, inplace=True)
+            df.sort_values(by=['date', 'transaction_num'], inplace=True)
+            df.reset_index(drop=True, inplace=True)
+
+            with open(os.path.join(pickle_dir, fname), 'wb') as file:
+                pickle.dump(df, file=file)
 
         return df
 
@@ -820,80 +890,20 @@ class DesjardinsMC(Account):
             plt.show()
         return fig
 
-    def plot_prediction(self,
-                        end_date: datetime.date,
-                        start_date: datetime.date = None,
-                        sim_date: datetime.date = None,
-                        show=False,
-                        fig_size=(7, 8)):
-
-        d = self.get_predicted_balance(end_date=end_date, sim_date=sim_date)
-        d.loc[:, 'balance'] = -1 * d.loc[:, 'balance'].copy()
-        if start_date is None:
-            start_date = datetime.datetime.today().date() - timedelta(days=7)
-        d = d[d['date'].array.date > start_date]
-
-        edate = d.tail(1)['date'].array[0]
-
-        for ix, row in d.iterrows():
-            i = 1
-            date = row['date'] + datetime.timedelta(days=i)
-            while (d['date'] == date).sum() == 0 and date < edate:
-                template = row.copy()
-                template['date'] = date
-                template['transaction_num'] = row['transaction_num']
-                template['description'] = 0
-                template['interests'] = 0
-                template['advance'] = 0
-                template['reimboursment'] = 0
-                template['code'] = 0
-                template['delta'] = 0
-                template['cap_interest'] = 0
-                d = d.append(template)
-                i += 1
-                date = row['date'] + datetime.timedelta(days=i)
-
-        d.sort_values(by='date', inplace=True)
-        d.reset_index(drop=True, inplace=True)
-
-        fig = plt.figure(figsize=fig_size)
-
-        tmp = d.loc[d[d['transaction_num'] == 'na'].index[0]-1:d[d['transaction_num'] == 'na'].index[0]].copy()
-
-        plt.plot(d.loc[d['transaction_num'] != 'na', 'date'],
-                 d.loc[d['transaction_num'] != 'na', 'balance'],
-                 c='g')
-        plt.plot(tmp['date'],
-                 tmp['balance'],
-                 c='b')
-        plt.plot(d.loc[d['transaction_num'] == 'na', 'date'],
-                 d.loc[d['transaction_num'] == 'na', 'balance'],
-                 c='b')
-
-        plt.title(f'Prediction')
-        plt.grid(b=True, which='major', axis='both')
-        plt.grid(b=True, which='minor', axis='x')
-        plt.xticks(rotation=90)
-        plt.yticks(ticks=np.arange(np.round(d.balance.min() - 500, -3),
-                                   np.round(d.balance.max() + 500, -3),
-                                   500))
-        if show:
-            plt.show()
-        return fig
-
     def plot_prediction_compare(self,
                                 end_date: datetime.date,
                                 start_date: datetime.date = None,
-                                sim_date: datetime.date = None,
+                                sim_dates: List[Union[datetime.date, None]] = None,
                                 show=False,
                                 fig_size=(7, 8),
                                 force_new: bool = False,
-                                avg_interval: int = 90) -> None:
+                                avg_interval: int = 90,
+                                montecarl_iterations=100) -> None:
         """
 
         :param end_date:        The simulation end date.
         :param start_date:      The simulation start date.
-        :param sim_date:        A date from which a simulation starts even though actual data follows that date
+        :param sim_dates:      A list of dates from which a simulation starts even though actual data follows that date
         :param show:            Show the plot, as opposed to returning only the canvas.
         :param fig_size:        The size of the figure in inches.
         :param force_new:       Force a new simulation even though a preceding simulation has been run wih the
@@ -902,94 +912,64 @@ class DesjardinsMC(Account):
                                 are computed for each transaction code.
         """
 
-        def plot_predictions(predictions: list):
-            fill_colors = [(1, 0, 0), (0, 1, 0)]
-            line_colors = [(0.5, 0, 0), (0, 0.5, 0)]
-            hatchs = ['x', 'O']
-            for ix, pred in enumerate(predictions):
+        def plot_predictions(predictions: List[pd.DataFrame]):
+            for ix, pred in enumerate(tqdm(predictions, desc='ploting predictions...')):
+                fill_colors = (random.random(), random.random(), random.random())
+                passed_ix = ~(pred["transaction_num"].str.contains("planned") |
+                              (pred["transaction_num"].str.contains("expected")) |
+                              (pred["transaction_num"].str.contains("montecarlo")))
 
-                prediction_ix = pred[pred['transaction_num'] == 'mean'].index[0]
+                mc_futur_ix = ~passed_ix & (pred["transaction_num"].str.contains("mc") | pred["transaction_num"].str.contains("montecarlo"))
+                mean_futur_ix = ~passed_ix & (pred["transaction_num"].str.contains("mean") | pred["transaction_num"].str.contains("montecarlo"))
 
-                # the gap between actual data and predictions
-                gap = pred.loc[prediction_ix - 1:prediction_ix].copy()
-
-                # plot current balance
-                plt.plot(pred.loc[0:prediction_ix, 'date'],
-                         pred.loc[0:prediction_ix, 'balance'],
-                         c='g')
-
-                # plot a line for the gap
-                plt.plot(gap['date'],
-                         gap['balance'],
-                         c='b',
-                         linestyle=':')
-
-                # fill between positive and negative std deviations
-
-                for lim_inf, lim_sup in zip(['std_-3', 'std_2'], ['std_-2', 'std_3']):
-                    plt.fill_between(x=pred.loc[pred['transaction_num'] == 'std_-3', 'date'],
-                                     y1=pred.loc[pred['transaction_num'] == lim_inf, 'balance'],
-                                     y2=pred.loc[pred['transaction_num'] == lim_sup, 'balance'],
-                                     alpha=.3,
-                                     color=fill_colors[ix],
-                                     # hatch=hatchs[ix],
-                                     edgecolor=fill_colors[ix])
-
-                for lim_inf, lim_sup in zip(['std_-2', 'std_1'], ['std_-1', 'std_2']):
-                    plt.fill_between(x=pred.loc[pred['transaction_num'] == 'std_-2', 'date'],
-                                     y1=pred.loc[pred['transaction_num'] == lim_inf, 'balance'],
-                                     y2=pred.loc[pred['transaction_num'] == lim_sup, 'balance'],
-                                     alpha=.5,
-                                     color=fill_colors[ix],
-                                     # hatch=hatchs[ix],
-                                     edgecolor=fill_colors[ix])
-                plt.fill_between(x=pred.loc[pred['transaction_num'] == 'std_-1', 'date'],
-                                 y1=pred.loc[pred['transaction_num'] == 'std_-1', 'balance'],
-                                 y2=pred.loc[pred['transaction_num'] == 'std_1', 'balance'],
-                                 alpha=.7,
-                                 color=fill_colors[ix],
-                                 # hatch=hatchs[ix],
-                                 edgecolor=fill_colors[ix])
-
-                # plot mean
-                plt.plot(pred.loc[pred['transaction_num'] == 'mean', 'date'],
-                         pred.loc[pred['transaction_num'] == 'mean', 'balance'],
-                         color=line_colors[ix],
+                df_mean = pred[np.where(mc_futur_ix == True)[0][0] - 1:].copy().groupby(by='date').mean(numeric_only=True)
+                df_std = pred[np.where(mc_futur_ix == True)[0][0] - 1:].copy().groupby(by='date').std(numeric_only=True)
+                plt.fill_between(x=pd.to_datetime(df_std.index),
+                                 y1=df_mean.balance - 3 * df_std.balance,
+                                 y2=df_mean.balance + 3 * df_std.balance,
+                                 color=fill_colors,
+                                 alpha=0.45)
+                plt.plot(pd.to_datetime(df_std.index),
+                         df_mean.balance,
+                         color=fill_colors,
                          linestyle='--')
 
-        estimations = list()
+                # we want to plot past transaction only once
+                if ix == len(predictions) - 1:
+                    # sns.lineplot(data=pred[passed_ix].copy(), x='date', y='balance', color='g')
+                    plt.plot(pd.to_datetime(pred[passed_ix].date), pred[passed_ix].balance, color='g')
 
-        # past estimations
-        pred = self.get_predicted_balance(end_date=end_date,
-                                          sim_date=sim_date,
-                                          force_new=force_new,
-                                          avg_interval=avg_interval).copy()
-        pred.loc[:, 'balance'] = -1 * pred.loc[:, 'balance']
-        if start_date is None:
-            start_date = datetime.datetime.today().date() - timedelta(days=7)
-        pred = pred[pred['date'].array.date > start_date]
-        pred.date = pred.date.apply(func=lambda i: str(i).replace(' 00:00:00', ''))
+        predictions: List[pd.DataFrame] = list()
+
+        if sim_dates is None:
+            sim_dates = [None]
+        else:
+            sim_dates.append(None)
+
+        for sdate in sim_dates:
+            prediction = self.get_predicted_balance(end_date=end_date,
+                                              sim_date=sdate,
+                                              force_new=force_new,
+                                              avg_interval=avg_interval,
+                                              montecarl_iterations=montecarl_iterations).copy()
+            prediction.loc[:, 'balance'] = -1 * prediction.loc[:, 'balance']
+            if start_date is None:
+                start_date = datetime.datetime.today().date() - timedelta(days=7)
+            prediction = prediction[prediction['date'].array.date > start_date]
+            prediction.date = prediction.date.apply(func=lambda i: str(i).replace(' 00:00:00', ''))
+            predictions.append(prediction)
 
         title = f'Prediction {start_date} to {end_date}'
         fig = plt.figure(figsize=fig_size, num=title)
 
-        # current estimation
-        current_pred = self.get_predicted_balance(end_date=end_date, sim_date=None, force_new=force_new).copy()
-        current_pred.loc[:, 'balance'] = -1 * current_pred.loc[:, 'balance']
-        if start_date is None:
-            start_date = datetime.datetime.today().date() - timedelta(days=7)
-        current_pred = current_pred[current_pred['date'].array.date > start_date]
-        current_pred.date = current_pred.date.apply(lambda i: str(i).replace(' 00:00:00', ''))
-
-        estimations.append(current_pred)
-        plot_predictions(predictions=[pred, current_pred])
+        plot_predictions(predictions=predictions)
 
         plt.title(title)
         plt.grid(b=True, which='major', axis='both')
         plt.grid(b=True, which='minor', axis='x')
         plt.xticks(rotation=90)
-        min_y = min(pred.balance.min(), current_pred.balance.min())
-        max_y = max(pred.balance.max(), current_pred.balance.max())
+        min_y = min([estim.balance.min() for estim in predictions])
+        max_y = max([estim.balance.max() for estim in predictions])
         plt.yticks(ticks=np.arange(np.round(min_y - 1000, -3),
                                    np.round(max_y + 1000, -3),
                                    500))
@@ -1089,13 +1069,15 @@ class DesjardinsPR(Account):
             daily_std = np.multiply(std_devs, daily_freqs)
 
             daily_means.advance *= -1
+            daily_freqs.advance *= -1
 
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
         else:
-            daily_means, daily_std = None, None
+            daily_means, daily_std, daily_freqs = None, None, None
 
-        return daily_means, daily_std
+        return daily_means, daily_std, daily_freqs
 
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
@@ -1302,12 +1284,16 @@ class VisaPP(Account):
             daily_means = np.multiply(means, daily_freqs)
             daily_std = np.multiply(std_devs, daily_freqs)
 
+            daily_freqs['credit/payment_out'] *= -1
+
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
-        else:
-            daily_means, daily_std = None, None
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
 
-        return daily_means, daily_std
+        else:
+            daily_means, daily_std, daily_freqs = None, None, None
+
+        return daily_means, daily_std, daily_freqs
 
     def get_current_balance(self) -> float:
         return self.transaction_data.tail(n=1)['balance'].values[0]
@@ -1389,14 +1375,16 @@ class CapitalOne(Account):
             daily_std = np.multiply(std_devs, daily_freqs)
 
             daily_means.debit *= -1
+            daily_freqs.debit *= -1
 
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
 
         else:
-            daily_means, daily_std = None, None
+            daily_means, daily_std, daily_freqs = None, None, None
 
-        return daily_means, daily_std
+        return daily_means, daily_std, daily_freqs
 
     def update_from_raw_files(self):
         cash_flow = self.transaction_data
@@ -1508,13 +1496,15 @@ class CIBC(Account):
             daily_std = np.multiply(std_devs, daily_freqs)
 
             daily_means.debit *= -1
+            daily_freqs.debit *= -1
 
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
         else:
-            daily_means, daily_std = None, None
+            daily_means, daily_std, daily_freqs = None, None, None
 
-        return daily_means, daily_std
+        return daily_means, daily_std, daily_freqs
 
     def update_from_raw_files(self):
         cash_flow = self.transaction_data
@@ -1677,12 +1667,16 @@ class PayPal(Account):
             daily_means = np.multiply(means, daily_freqs)
             daily_std = np.multiply(std_devs, daily_freqs)
 
+            daily_freqs.amount_out *= -1
+
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
+            daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
         else:
-            daily_means, daily_std = None, None
+            daily_means, daily_std, daily_freqs = None, None, None
 
-        return daily_means, daily_std
+        return daily_means, daily_std, daily_freqs
+
     def update_from_raw_files(self):
         if self.metadata.raw_files_dir == '':
             raise ValueError('please specify a path for Desjardins CSV files')
@@ -1747,7 +1741,6 @@ class PayPal(Account):
             print(f'{l2 - l1} new entries added')
             if self._save_prompt():
                 self.to_pickle()
-            self.to_pickle()
 
     # TODO implement prediction method
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
@@ -1807,26 +1800,31 @@ class Accounts:
     def get_data_range_daily_average(self, start_date: datetime.date, end_date: datetime.date):
         av_l = list()
         std_l = list()
-        d = None
-        s = None
+        frq_l = list()
+        mean = None
+        std_dev = None
+        freqs = None
         for acc in self.accounts_list:
-            daily_means, range_std = acc.get_date_range_daily_average(start_date=start_date, end_date=end_date)
+            daily_means, range_std, freqs = acc.get_date_range_daily_average(start_date=start_date, end_date=end_date)
             if daily_means is not None:
                 av_l.append(daily_means)
                 std_l.append(range_std)
+                frq_l.append(freqs)
         if len(av_l) > 0:
-            d = pd.concat(av_l)
-            d = d.groupby(by='code').sum()
-            s = pd.concat(std_l)
-            s = s.groupby(by='code').sum()
+            mean = pd.concat(av_l)
+            mean = mean.groupby(by='code').mean()
+            std_dev = pd.concat(std_l)
+            std_dev = std_dev.groupby(by='code').mean()
+            freqs = pd.concat(frq_l)
+            freqs = freqs.groupby(by='code').mean()
 
-        if d is not None:
-            if 'transaction_num' in d.columns:
-                d.drop(columns=['transaction_num'], inplace=True)
-            if 'internal_cashflow' in d.index:
-                d.drop(labels=['internal_cashflow'], inplace=True)
+        if mean is not None:
+            if 'transaction_num' in mean.columns:
+                mean.drop(columns=['transaction_num'], inplace=True)
+            if 'internal_cashflow' in mean.index:
+                mean.drop(labels=['internal_cashflow'], inplace=True)
 
-        return d, s
+        return mean, std_dev, freqs
 
     def barplot(self, year=None, month=None, day=None, show=False):
 
@@ -1850,7 +1848,7 @@ class Accounts:
     def barplot_date_range(self, start_date: datetime.date, end_date: datetime.date, show=False):
 
         d = self.get_summed_data_date_range(start_date=start_date, end_date=end_date)
-        d_avg = self.get_data_range_daily_average(start_date=start_date, end_date=end_date)
+        d_avg, _, _ = self.get_data_range_daily_average(start_date=start_date, end_date=end_date)
 
         expenses = d.loc[d['total'] < 0, 'total'].sum()
         income = d.loc[d['total'] >= 0, 'total'].sum()
