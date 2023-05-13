@@ -15,7 +15,6 @@ from selenium.webdriver.support import expected_conditions as EC
 from selenium.webdriver.chrome.options import Options
 from getpass import getpass
 
-import Accounts
 from utils.utils import print_step, get_project_root
 
 

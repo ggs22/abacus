@@ -1,14 +1,11 @@
-import matplotlib.pyplot as plt
 import pandas as pd
-import PIL
-import io
 import tkinter as tk
-import Accounts
+from accounts import Accounts
 
 from tkinter import ttk
 # from Grapher import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-from tkcalendar import Calendar, DateEntry
+from tkcalendar import DateEntry
 
 _tree_view_font_size = 9
 

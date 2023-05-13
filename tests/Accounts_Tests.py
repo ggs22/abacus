@@ -1,5 +1,26 @@
-import cProfile
-from Accounts import *
+import argparse
+import accounts
+
+import datetime
+from accounts import desjardins_mc, accounts
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--force_new',
+                        help="Wether or not we want to force a new Monte-Carlo simulation computation.",
+                        action='store_true')
+    parser.add_argument('--avg_interval',
+                        help="The number of passed days over which spending averages, standard deviations and daily "
+                             "frequencies are calculated.",
+                        default=365,
+                        type=int)
+    parser.add_argument('--montecarlo_iterations',
+                        help="The number of iterations run for Monte-Carlo-simulated spendings.",
+                        default=200,
+                        type=int)
+
+    return parser.parse_args()
 
 
 def plot_years():
@@ -14,24 +35,25 @@ def print_accounts_info():
         print(acc.get_current_balance())
 
 
-def plot_predictions(force_new: bool = False):
-    start_date = datetime.date(year=2022, month=1, day=1)
+def plot_predictions(force_new: bool = False, avg_interval=365, montecarlo_iterations=200):
+    start_date = datetime.date(year=2023, month=5, day=1)
     sim_dates = list()
-    sim_dates += [datetime.date(year=2023, month=1, day=15)]
-    sim_dates += [datetime.date(year=2023, month=1, day=31)]
-    sim_dates += [datetime.date(year=2023, month=2, day=15)]
-    sim_dates += [datetime.date(year=2023, month=2, day=28)]
+    # sim_dates += [datetime.date(year=2023, month=1, day=15)]
+    # sim_dates += [datetime.date(year=2023, month=1, day=31)]
+    # sim_dates += [datetime.date(year=2023, month=2, day=15)]
+    # sim_dates += [datetime.date(year=2023, month=2, day=28)]
     # for i in range(3, 0, -1):
     #     sim_dates += [datetime.date(year=2022, month=(12 - i), day=6)]
     end_date = datetime.date(year=2023, month=12, day=31)
 
-    desjardins_mc.plot_prediction_compare(start_date=start_date,
+    desjardins_mc.plot_prediction_compare(get_avg_method=accounts.get_data_range_daily_average,
+                                          start_date=start_date,
                                           sim_dates=sim_dates,
                                           end_date=end_date,
                                           show=True,
                                           force_new=force_new,
-                                          avg_interval=365,
-                                          montecarl_iterations=200)
+                                          avg_interval=avg_interval,
+                                          montecarl_iterations=montecarlo_iterations)
 
 
 def get_averages():
@@ -39,6 +61,7 @@ def get_averages():
     print(avg)
     avg = accounts.get_daily_average()
     print(avg)
+
 
 def bp_years(years):
     for y in years:
@@ -66,12 +89,16 @@ def bp_current_month():
 
 if __name__ == "__main__":
     "tests"
+
+    args = parse_args()
     # pred = desjardins_mc.get_predicted_balance(end_date=datetime.date(year=2023, month=12, day=31),
     #                                            force_new=True)
     # bp_last_months(num_months=6)
 
     # cProfile.run(statement='plot_predictions(force_new=False)', sort='cumtime')
-    plot_predictions(force_new=False)
+    plot_predictions(force_new=args.force_new,
+                     avg_interval=args.avg_interval,
+                     montecarlo_iterations=args.montecarlo_iterations)
     # print(accounts.get_most_recent_transaction_date())
     bp_last_months(3)
     # yearly_summary = accounts.get_yearly_summary(year=2022)

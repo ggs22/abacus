@@ -1,6 +1,6 @@
 import argparse
 
-from Accounts import *
+from accounts import desjardins_op
 from View import View
 
 
