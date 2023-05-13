@@ -48,26 +48,30 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
     :return: prints pay tupples for the "desjardins_planned_transactions.csv" file
     """
     switch_week = False
-    pay_day_counts = [0, 0]
+    last_count = 0
+    current_count = 0
 
     # LTI pays are max 16 days after pay period (fix dates pays)
     end_date = end_date + datetime.timedelta(days=16)
 
     for i in range(0, (end_date-start_date).days):
         d = start_date + datetime.timedelta(days=i)
-        if d.weekday() in [0, 1, 2, 3, 4]:
-            pay_day_counts[switch_week] += 1
+        is_business_day = d.weekday() in [0, 1, 2, 3, 4]
+        if is_business_day:
+            current_count += 1
         if d.day == 15:
-            pay_amount = calculate_pay(pay_day_counts[not switch_week])
-            pay_day_counts[not switch_week] = 0
+            pay_amount = calculate_pay(last_count)
+            last_count = current_count
+            current_count = 0
             print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
-            switch_week = not switch_week
         elif d.day == 1:
-            tmp = d - datetime.timedelta(days=1)
-            pay_amount = calculate_pay(pay_day_counts[not switch_week])
-            pay_day_counts[not switch_week] = 0
-            print(f'pay,{tmp.year},{tmp.month},{tmp.day},0,{pay_amount},pay')
-            switch_week = not switch_week
+            payday = d - datetime.timedelta(days=1)  # we get the last day of the preceding month
+            pay_amount = calculate_pay(last_count)
+            b_day_shift = 1 if d.weekday() in [0, 1, 2, 3, 4] else 0
+            last_count = current_count - b_day_shift
+            current_count = b_day_shift
+            print(f'pay,{payday.year},{payday.month},{payday.day},0,{pay_amount},pay')
+            # switch_week = not switch_week
 
 
 def print_pay_dates(start_date: datetime.date = datetime.datetime.today().date(),
@@ -92,7 +96,7 @@ def calculate_pay(days: int, clear=True):
 
     daily_hours = 7.5
     hourly_rate = (85000/1950)
-    rate = 0.6887 if clear else 1
+    rate = 0.671 if clear else 1
     return round(days * daily_hours * hourly_rate * rate, 2)
 
 
@@ -126,7 +130,7 @@ months_map = {
 }
 
 if __name__ == "__main__":
-    sdate = datetime.date(year=2022, month=11, day=16)
-    edate = datetime.date(year=2023, month=11, day=15)
+    sdate = datetime.date(year=2023, month=1, day=2)
+    edate = datetime.date(year=2023, month=12, day=31)
 
     print_lti_pays(start_date=sdate, end_date=edate)

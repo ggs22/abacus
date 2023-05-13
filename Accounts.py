@@ -567,6 +567,7 @@ class DesjardinsOP(Account):
             df = None
         return df
 
+
 class DesjardinsMC(Account):
     def __init__(self, lmetadata: AccountMetadata):
         super().__init__(lmetadata=lmetadata)
@@ -669,6 +670,8 @@ class DesjardinsMC(Account):
                         if row['account'] == 'MC2':
                             row['date'] = pd.to_datetime(row['date'], format='%Y-%m-%d')
                             row['code'] = get_common_codes(pd.DataFrame(row).T).values[0]
+                            if row['code'] == "na":
+                                row['code'] = self.get_account_specific_codes(pd.DataFrame(row).T).values[0]
                             row.replace(np.nan, 0, inplace=True)
                             self.transaction_data = self.transaction_data.append(other=row, ignore_index=True)
                             new_entries += 1
@@ -734,9 +737,9 @@ class DesjardinsMC(Account):
             t_num_mc_prefix = 0
             digit_num = int(np.log10(montecarl_iterations)) + 1
             for mc_it in tqdm(range(0, montecarl_iterations),
-                          position=0,
-                          leave=False,
-                          desc='Monte-Carlo iterations'):
+                              position=0,
+                              leave=False,
+                              desc='Monte-Carlo iterations'):
                 # for each day in the projection
                 for delta_days in tqdm(range(1, (end_date-idate).days),
                                        position=1,
@@ -773,11 +776,10 @@ class DesjardinsMC(Account):
                                                         'cell', 'hydro', 'interest', 'other',
                                                         'credit', 'impots & tps', 'trading']:
 
-                            # if mean_inscribed:
+                            # inscribe mean
                             # compute probabilistic threshold of transaction occurence
                             amount = random.gauss(mu=avg.loc[expense_code, 'total_mean'] / freqs.loc[expense_code, 'total_freq'],
                                                   sigma=std.loc[expense_code, 'total_std'] / freqs.loc[expense_code, 'total_freq'])
-                            # amount = avg.loc[expense_code, 'total_mean'] / freqs.loc[expense_code, 'total_freq']
                             amount *= np.sign(avg.loc[expense_code, 'total_mean'])
                             amount = round(amount, 2)
                             thresh_prob = random.uniform(0, 1)
@@ -842,24 +844,24 @@ class DesjardinsMC(Account):
 
             # add interest estimate
             df_pred.sort_values(by=['date', 'transaction_num'], inplace=True)
-            df_pred['delta'] = df_pred.date.diff().shift(-1)
-            df_pred['delta'] = df_pred.delta.array.days
-            df_pred['cap_interest'] = np.multiply(df_pred.balance, df_pred.delta) * self.metadata.interest_rate / 365
-            df_pred.loc[df_pred['cap_interest'] < 0, 'cap_interest'] = 0
+            # df_pred['delta'] = df_pred.date.diff().shift(-1)
+            # df_pred['delta'] = df_pred.delta.array.days
+            # df_pred['cap_interest'] = np.multiply(df_pred.balance, df_pred.delta) * self.metadata.interest_rate / 365
+            # df_pred.loc[df_pred['cap_interest'] < 0, 'cap_interest'] = 0
             df_pred.replace(np.nan, 0, inplace=True)
             df_pred.reset_index(drop=True, inplace=True)
 
-            interest_sum = 0
-            itt = iter(df_pred.iterrows())
-            for ix, row in itt:
-                interest_sum += row['cap_interest']
-                if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
-                    while row['date'].day == 1:
-                        if row['code'] == 'interest' and row['interests'] == 0:
-                            df_pred.loc[ix, 'interests'] = interest_sum
-                            df_pred.loc[ix, 'balance'] += interest_sum
-                        ix, row = next(itt)
-                    interest_sum = 0
+            # interest_sum = 0
+            # itt = iter(df_pred.iterrows())
+            # for ix, row in itt:
+            #     interest_sum += row['cap_interest']
+            #     if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
+            #         while row['date'].day == 1:
+            #             if row['code'] == 'interest' and row['interests'] == 0:
+            #                 df_pred.loc[ix, 'interests'] = interest_sum
+            #                 df_pred.loc[ix, 'balance'] += interest_sum
+            #             ix, row = next(itt)
+            #         interest_sum = 0
 
             df = pd.concat([df, df_pred]).sort_values(by=['date', 'transaction_num'])
             df.dropna(axis=0, how='all', inplace=True)
@@ -903,7 +905,7 @@ class DesjardinsMC(Account):
 
         :param end_date:        The simulation end date.
         :param start_date:      The simulation start date.
-        :param sim_dates:      A list of dates from which a simulation starts even though actual data follows that date
+        :param sim_dates:       A list of dates from which a simulation starts even though actual data follows that date
         :param show:            Show the plot, as opposed to returning only the canvas.
         :param fig_size:        The size of the figure in inches.
         :param force_new:       Force a new simulation even though a preceding simulation has been run wih the
@@ -1098,6 +1100,8 @@ class DesjardinsPR(Account):
                         if row['account'] == 'PR1':
                             row['date'] = pd.to_datetime(row['date'], format='%Y-%m-%d')
                             row['code'] = get_common_codes(pd.DataFrame(row).T).values[0]
+                            if row['code'] == "na":
+                                row['code'] = self.get_account_specific_codes(pd.DataFrame(row).T).values[0]
                             row.replace(np.nan, 0, inplace=True)
                             self.transaction_data = self.transaction_data.append(other=row, ignore_index=True)
                             new_entries += 1
@@ -1903,11 +1907,13 @@ class Accounts:
         data['total'] = data.sum(axis=1)
         data = data.loc[:, [*columns, 'expenses', 'income', 'total']] if columns is not None else data
         line_styles = ['-', '--', '-.', ':']
-        for ix, (name, col) in enumerate(data.iteritems()):
+        plt.figure()
+        for ix, (name, col) in enumerate(data.items()):
             sel = ix % len(line_styles)
             style = line_styles[sel]
             color = (sel * 0.2 % 1.0 + 0.2, random.random(), random.random())
-            plt.plot(col, c=color, linestyle=style, label=name)
+            # plt.plot(col, c=color, linestyle=style, label=name)
+            plt.scatter(col, c=color, label=name)
         # sns.relplot(data=data, kind='line', palette='muted')
         plt.legend()
         plt.xticks(rotation=90)
@@ -1942,10 +1948,10 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            serialized_object_path=os.path.join(pickle_dir, 'desjardins_mc.pkl'),
                            planned_transactions_path=os.path.join(data_dir,
                                                                   'desjardins_planned_transactions.csv'),
-                           interest_rate=0.0645,
+                           interest_rate=0.0695,
                            name=AccountNames.DESJARDINS_MC,
                            columns_names=names,
-                           assignation_file_path='',
+                           assignation_file_path=os.path.join(data_dir, 'assignations_desjardins_mc.json'),
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_mc = DesjardinsMC(lmetadata=metadata)
@@ -1960,7 +1966,7 @@ metadata = AccountMetadata(raw_files_dir=os.path.join(data_dir, 'desjardins_csv_
                            interest_rate=0.052 ,
                            name=AccountNames.DESJARDINS_PR,
                            columns_names=names,
-                           assignation_file_path='',
+                           assignation_file_path=os.path.join(data_dir, 'assignations_desjardins_pr.json'),
                            type=AccountType.CREDIT,
                            status=AccountStatus.OPEN)
 desjardins_pr = DesjardinsPR(lmetadata=metadata)

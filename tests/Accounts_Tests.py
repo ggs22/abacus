@@ -18,9 +18,12 @@ def plot_predictions(force_new: bool = False):
     start_date = datetime.date(year=2022, month=1, day=1)
     sim_dates = list()
     sim_dates += [datetime.date(year=2023, month=1, day=15)]
+    sim_dates += [datetime.date(year=2023, month=1, day=31)]
+    sim_dates += [datetime.date(year=2023, month=2, day=15)]
+    sim_dates += [datetime.date(year=2023, month=2, day=28)]
     # for i in range(3, 0, -1):
     #     sim_dates += [datetime.date(year=2022, month=(12 - i), day=6)]
-    end_date = datetime.date(year=2023, month=3, day=31)
+    end_date = datetime.date(year=2023, month=12, day=31)
 
     desjardins_mc.plot_prediction_compare(start_date=start_date,
                                           sim_dates=sim_dates,
@@ -68,9 +71,8 @@ if __name__ == "__main__":
     # bp_last_months(num_months=6)
 
     # cProfile.run(statement='plot_predictions(force_new=False)', sort='cumtime')
-
-    plot_predictions(force_new=True)
+    plot_predictions(force_new=False)
     # print(accounts.get_most_recent_transaction_date())
-    bp_last_months(12)
+    bp_last_months(3)
     # yearly_summary = accounts.get_yearly_summary(year=2022)
     # accounts.plot_yearly_summary(year=2022, columns=yearly_summary.index[yearly_summary.index != 'pay'])
