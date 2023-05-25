@@ -12,7 +12,6 @@ from accounts.Accounts import AccountMetadata, AccountNames, AccountType, Accoun
 from utils.utils import data_dir, pickle_dir
 
 
-
 """
 Create account objects
 """

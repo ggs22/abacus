@@ -47,7 +47,6 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
     :param end_date: last day of pay period
     :return: prints pay tupples for the "desjardins_planned_transactions.csv" file
     """
-    switch_week = False
     last_count = 0
     current_count = 0
 
@@ -131,6 +130,6 @@ months_map = {
 
 if __name__ == "__main__":
     sdate = datetime.date(year=2023, month=1, day=2)
-    edate = datetime.date(year=2023, month=12, day=31)
+    edate = datetime.date(year=2024, month=12, day=31)
 
     print_lti_pays(start_date=sdate, end_date=edate)

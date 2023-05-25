@@ -151,7 +151,7 @@ class DesjardinsMC(Account):
         :return: a Dataframe containing the predicted balance of the account
         """
 
-        fname = f'prd' + f'_{sim_date}' * (sim_date is not None) + f'_{end_date}.pkl'
+        fname = f'prd' + f'_{sim_date}' * (sim_date is not None) + f'_{end_date}_{str(montecarl_iterations)}_it.pkl'
         fpath = os.path.join(pickle_dir, fname)
         if os.path.exists(fpath) and not force_new:
             print(f'Prediction loaded from previous execution ({fpath})')
@@ -173,8 +173,7 @@ class DesjardinsMC(Account):
             sdate = idate - datetime.timedelta(days=avg_interval)
             avg, std, freqs = get_avg_method(start_date=sdate, end_date=idate)
 
-            balances_list = [df.tail(1).balance.values[0]].copy()
-            initial_bal_value = balances_list[0]
+            initial_bal_value = df.tail(1).balance.values[0]
 
             # Monte carlo iterations
             t_num_mc_prefix = 0
@@ -194,6 +193,12 @@ class DesjardinsMC(Account):
                                       'balance': list(),
                                       'code': list()}
 
+                planned_interest_sum = 0
+                mc_interest_sum = 0
+
+                mc_balances_list = [initial_bal_value]
+                mean_balances_list = [initial_bal_value]
+
                 # for each day in the projection
                 for delta_days in tqdm(range(1, (end_date-idate).days),
                                        position=1,
@@ -208,20 +213,49 @@ class DesjardinsMC(Account):
                                                    month=ptransaction['month'],
                                                    day=ptransaction['day'],
                                                    date=date):
-
+                            # mc line
                             transaction_tuples['date'].append(pd.to_datetime(date))
                             transaction_tuples['transaction_num'].append(f'{t_num_mc_prefix:0{digit_num}d}_'
                                                                          f'{t_num_date_prefix:03d}_'
-                                                                         f'planned')
+                                                                         f'planned_mc')
                             transaction_tuples['description'].append(ptransaction['description'])
                             transaction_tuples['interests'].append(0)
                             transaction_tuples['advance'].append(ptransaction['withdrawal'])
                             transaction_tuples['reimboursment'].append(ptransaction['deposit'])
-                            balance = balances_list[-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
+
+                            if date.day == 1 and ptransaction['code'] == 'interest':
+                                balance = mc_balances_list[-1:][0] + mc_interest_sum
+                                transaction_tuples['advance'] = transaction_tuples['advance'][:-1:]
+                                transaction_tuples['advance'].append(mc_interest_sum)
+                                mc_interest_sum = 0
+                            else:
+                                balance = mc_balances_list[-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
                             transaction_tuples['balance'].append(balance)
                             transaction_tuples['code'].append(ptransaction['code'])
 
-                            balances_list.append(balance)
+                            mc_balances_list.append(balance)
+                            t_num_date_prefix += 1
+
+                            # mean line
+                            transaction_tuples['date'].append(pd.to_datetime(date))
+                            transaction_tuples['transaction_num'].append(f'{t_num_mc_prefix:0{digit_num}d}_'
+                                                                         f'{t_num_date_prefix:03d}_'
+                                                                         f'planned_mean')
+                            transaction_tuples['description'].append(ptransaction['description'])
+                            transaction_tuples['interests'].append(0)
+                            transaction_tuples['advance'].append(ptransaction['withdrawal'])
+                            transaction_tuples['reimboursment'].append(ptransaction['deposit'])
+                            if date.day == 1 and ptransaction['code'] == 'interest':
+                                balance = mean_balances_list[-1:][0] + planned_interest_sum
+                                transaction_tuples['advance'] = transaction_tuples['advance'][:-1:]
+                                transaction_tuples['advance'].append(planned_interest_sum)
+                                planned_interest_sum = 0
+                            else:
+                                balance = mean_balances_list[-1:][0] + ptransaction['withdrawal'] - ptransaction['deposit']
+                            transaction_tuples['balance'].append(balance)
+                            transaction_tuples['code'].append(ptransaction['code'])
+
+                            mean_balances_list.append(balance)
                             t_num_date_prefix += 1
 
                     # add average expenses to prediction
@@ -252,12 +286,12 @@ class DesjardinsMC(Account):
                                     abs(amount) * (avg.loc[expense_code, 'total_mean'] < 0))
                                 transaction_tuples['reimboursment'].append(
                                     abs(amount) * (avg.loc[expense_code, 'total_mean'] >= 0))
-                                balance = balances_list[-1:][0] - transaction_tuples['reimboursment'][-1:][0] + \
+                                balance = mc_balances_list[-1:][0] - transaction_tuples['reimboursment'][-1:][0] + \
                                           transaction_tuples['advance'][-1:][0]
                                 transaction_tuples['balance'].append(balance)
                                 transaction_tuples['code'].append(expense_code)
 
-                                balances_list.append(balance)
+                                mc_balances_list.append(balance)
                                 t_num_date_prefix += 1
 
                             # in the first iteration we want to compute the non-conditionnal average (will be the dotted line)
@@ -271,12 +305,15 @@ class DesjardinsMC(Account):
                                 transaction_tuples['interests'].append(0)
                                 transaction_tuples['advance'].append(abs(amount) * (avg.loc[expense_code, 'total_mean'] < 0))
                                 transaction_tuples['reimboursment'].append(abs(amount) * (avg.loc[expense_code, 'total_mean'] >= 0))
-                                balance = balances_list[-1:][0] - transaction_tuples['reimboursment'][-1:][0] + transaction_tuples['advance'][-1:][0]
+                                balance = mean_balances_list[-1:][0] - transaction_tuples['reimboursment'][-1:][0] + transaction_tuples['advance'][-1:][0]
                                 transaction_tuples['balance'].append(balance)
                                 transaction_tuples['code'].append(expense_code)
 
-                                balances_list.append(balance)
+                                mean_balances_list.append(balance)
                                 t_num_date_prefix += 1
+
+                    planned_interest_sum += mean_balances_list[-1:][0] * self.metadata.interest_rate/365
+                    mc_interest_sum += mc_balances_list[-1:][0] * self.metadata.interest_rate/365
 
                 if montecarl_iterations > 1:
                     # insert montecarlo reset tuple
@@ -290,40 +327,22 @@ class DesjardinsMC(Account):
                     transaction_tuples['balance'].append(balance)
                     transaction_tuples['code'].append('na')
 
-                    balances_list.append(initial_bal_value)
+                    mc_balances_list.append(initial_bal_value)
                     t_num_mc_prefix += 1
 
                 df_pred = pd.DataFrame(transaction_tuples)
 
-                # add interest estimate
-                df_pred.sort_values(by=['date', 'transaction_num'], inplace=True)
                 df_pred['delta'] = df_pred.date.diff().shift(-1)
                 df_pred['delta'] = df_pred.delta.array.days
-                df_pred['cap_interest'] = np.multiply(df_pred.balance, df_pred.delta) * self.metadata.interest_rate / 365
-                df_pred.loc[df_pred['cap_interest'] < 0, 'cap_interest'] = 0
                 df_pred.replace(np.nan, 0, inplace=True)
-                df_pred.reset_index(drop=True, inplace=True)
-
-                interest_sum = 0
-                itt = iter(df_pred.iterrows())
-                for ix, row in itt:
-                    interest_sum += row['cap_interest']
-                    if row['date'].day == 1 and row['interests'] == 0 and row['code'] == 'interest':
-                        while row['date'].day == 1:
-                            if row['code'] == 'interest' and row['interests'] == 0:
-                                df_pred.loc[ix, 'interests'] = interest_sum
-                                df_pred.loc[ix, 'balance'] += interest_sum
-                            ix, row = next(itt)
-                        interest_sum = 0
-
-                df = pd.concat([df, df_pred]).sort_values(by=['date', 'transaction_num'])
+                df = pd.concat([df, df_pred])
                 df.dropna(axis=0, how='all', inplace=True)
+                # let's drop lines where no change to the balance occurs
                 ix = (df['interests'] == 0) &\
                      (df['advance'] == 0) &\
                      (df['reimboursment'] == 0) &\
                      (df['transaction_num'] == "expected")
                 df.drop(labels=df.index[ix], axis=0, inplace=True)
-                df.sort_values(by=['date', 'transaction_num'], inplace=True)
                 df.reset_index(drop=True, inplace=True)
 
             with open(os.path.join(pickle_dir, fname), 'wb') as file:
@@ -368,23 +387,43 @@ class DesjardinsMC(Account):
                                 are computed for each transaction code.
         """
 
-        def plot_predictions(predictions: List[pd.DataFrame]):
+        def plot_predictions(predictions: List[pd.DataFrame], method: str ='montecarlo'):
+
+            method_choices = ['montecarlo', 'average']
+            if method not in method_choices:
+                raise RuntimeError(f"argument method must be choosen amongst {method_choices}")
+
             for ix, pred in enumerate(tqdm(predictions, desc='ploting predictions...')):
                 fill_colors = (random.random(), random.random(), random.random())
-                passed_ix = ~(pred["transaction_num"].str.contains("planned") |
+                passed_ix = ~((pred["transaction_num"].str.contains("planned")) |
                               (pred["transaction_num"].str.contains("expected")) |
                               (pred["transaction_num"].str.contains("montecarlo")))
 
-                mc_futur_ix = ~passed_ix & (pred["transaction_num"].str.contains("mc") | pred["transaction_num"].str.contains("montecarlo"))
-                # mean_futur_ix = ~passed_ix & (pred["transaction_num"].str.contains("mean") | pred["transaction_num"].str.contains("montecarlo"))
+                if method == method_choices[0]:
+                    futur_ix = (pred["transaction_num"].str.contains("planned_mc")) | \
+                               (pred["transaction_num"].str.contains("montecarlo")) |\
+                               (pred["transaction_num"].str.contains("mc_expected"))
+                    df = pred[futur_ix].copy()
+                    df['delta'] = pd.to_datetime(pred[futur_ix].date).diff().shift(-1)
+                    df['delta'] = df.delta.array.days
+                    df = df[df.delta > 0]
+                    df.drop(columns=['delta', 'transaction_num', 'description', 'interests',
+                                          'advance', 'reimboursment', 'code'],
+                                 inplace=True)
+                    df_mean = df.groupby(by='date').mean(numeric_only=True)
+                    df_std = df.groupby(by='date').std(numeric_only=True)
+                elif method == method_choices[1]:
+                    # futur_ix = (futur_ix | (pred["transaction_num"].str.contains("planned_mean")))
+                    futur_ix = pred["transaction_num"].str.contains("mean")
+                    futur_ix = futur_ix & (pred['delta'] == 1)
 
-                df_mean = pred[np.where(mc_futur_ix == True)[0][0] - 1:].copy().groupby(by='date').mean(numeric_only=True)
-                df_std = pred[np.where(mc_futur_ix == True)[0][0] - 1:].copy().groupby(by='date').std(numeric_only=True)
-                plt.fill_between(x=pd.to_datetime(df_std.index),
-                                 y1=df_mean.balance - 3 * df_std.balance,
-                                 y2=df_mean.balance + 3 * df_std.balance,
-                                 color=fill_colors,
-                                 alpha=0.45)
+                if method == method_choices[0]:
+                    plt.fill_between(x=pd.to_datetime(df_mean.index),
+                                     y1=df_mean.balance - 3 * df_std.balance,
+                                     y2=df_mean.balance + 3 * df_std.balance,
+                                     color=fill_colors,
+                                     alpha=0.45)
+
                 plt.plot(pd.to_datetime(df_std.index),
                          df_mean.balance,
                          color=fill_colors,
@@ -402,7 +441,7 @@ class DesjardinsMC(Account):
         else:
             sim_dates.append(None)
 
-        for sdate in sim_dates:
+        for sdate in tqdm(sim_dates, desc='simulating ranges' ):
             prediction = self.get_predicted_balance(get_avg_method=get_avg_method,
                                                     end_date=end_date,
                                                     sim_date=sdate,
@@ -419,7 +458,8 @@ class DesjardinsMC(Account):
         title = f'Prediction {start_date} to {end_date}'
         fig = plt.figure(figsize=fig_size, num=title)
 
-        plot_predictions(predictions=predictions)
+        plot_method = 'average' if montecarl_iterations == 1 else 'montecarlo'
+        plot_predictions(predictions=predictions, method=plot_method)
 
         plt.title(title)
         plt.grid(b=True, which='major', axis='both')
@@ -429,7 +469,7 @@ class DesjardinsMC(Account):
         max_y = max([estim.balance.max() for estim in predictions])
         plt.yticks(ticks=np.arange(np.round(min_y - 1000, -3),
                                    np.round(max_y + 1000, -3),
-                                   500))
+                                   2000))
 
         plt.gca().xaxis.set_major_locator(mdates.MonthLocator(interval=1))
 

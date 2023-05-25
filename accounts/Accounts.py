@@ -20,7 +20,7 @@ class AccountNames(Enum):
     VISA_PP = 4
     PAYPAL = 5
     CAPITAL_ONE = 6
-    CIBC = 6
+    CIBC = 7
 
 
 class AccountStatus(Enum):
