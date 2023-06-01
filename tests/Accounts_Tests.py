@@ -39,11 +39,10 @@ def plot_predictions(force_new: bool = False, avg_interval=365, montecarlo_itera
     start_date = datetime.date(year=2020, month=1, day=1)
     sim_dates = list()
     # sim_dates += [datetime.date(year=2023, month=1, day=31)]
-    sim_dates += [datetime.date(year=2023, month=2, day=28)]
-    sim_dates += [datetime.date(year=2023, month=3, day=31)]
+    sim_dates += [datetime.date(year=2023, month=5, day=15)]
     # for i in range(3, 0, -1):
     #     sim_dates += [datetime.date(year=2022, month=(12 - i), day=6)]
-    end_date = datetime.date(year=2024, month=12, day=31)
+    end_date = datetime.date(year=2023, month=12, day=31)
 
     desjardins_mc.plot_prediction_compare(get_avg_method=accounts.get_data_range_daily_average,
                                           start_date=start_date,
