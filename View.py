@@ -1,11 +1,11 @@
 import pandas as pd
 import tkinter as tk
-from accounts import Accounts
 
 from tkinter import ttk
 # from Grapher import *
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from tkcalendar import DateEntry
+from accounting import accounts
 
 _tree_view_font_size = 9
 
@@ -17,7 +17,7 @@ class View:
         self.root = tk.Tk()
         self.root.title('Abacus')
         self.root.geometry('1600x800')
-        # self.accounts = Accounts
+        # self.accounting = Accounts
 
         # set style
         style = ttk.Style(self.root)
@@ -39,7 +39,7 @@ class View:
 
         self.account_cbox = ttk.Combobox(self.root, width=20)
         self.account_cbox.grid(column=2, row=0)
-        self.account_cbox['values'] = Accounts.accounts.get_names()
+        self.account_cbox['values'] = accounts.get_names()
         self.account_cbox.bind("<<ComboboxSelected>>", self.update_account_display)
 
         self.main_tview = None
@@ -47,7 +47,7 @@ class View:
     def update_account_display(self, event):
         print(event)
         print(self.account_cbox.get())
-        df = Accounts.accounts.get_account(self.account_cbox.get()).transaction_data
+        df = accounts.get_account(self.account_cbox.get()).transaction_data
         self.inscribe_dataframe(df=df)
 
     def start(self):

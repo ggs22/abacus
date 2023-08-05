@@ -5,8 +5,8 @@ from datetime import timedelta
 import numpy as np
 import pandas as pd
 
-from accounts.Accounts import AccountMetadata, get_common_codes, _is_planned_transaction
-from accounts.Account import Account
+from accounting.Account import AccountMetadata
+from accounting.Account import Account, get_common_codes, _is_planned_transaction
 
 
 class DesjardinsPR(Account):
@@ -110,7 +110,8 @@ class DesjardinsPR(Account):
                             if row['code'] == "na":
                                 row['code'] = self.get_account_specific_codes(pd.DataFrame(row).T).values[0]
                             row.replace(np.nan, 0, inplace=True)
-                            self.transaction_data = self.transaction_data.append(other=row, ignore_index=True)
+                            self.transaction_data = pd.concat([self.transaction_data, pd.DataFrame(row).T],
+                                                              ignore_index=True)
                             new_entries += 1
 
         if new_entries > 0:

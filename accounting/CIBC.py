@@ -4,11 +4,11 @@ import os
 import numpy as np
 import pandas as pd
 
-from accounts.Accounts import AccountMetadata, get_common_codes
-from accounts.Account import Account
+from accounting.Account import AccountMetadata
+from accounting.Account import Account, get_common_codes
 
 
-class CapitalOne(Account):
+class CIBC(Account):
     def __init__(self, lmetadata: AccountMetadata):
         super().__init__(lmetadata=lmetadata)
         self.col_mask = ['date', 'description', 'debit', 'credit', 'code']
@@ -46,8 +46,8 @@ class CapitalOne(Account):
         range_data = self.get_data_by_date_range(start_date=start_date, end_date=end_date)
 
         if range_data.shape[0] > 0:
-            withdrawals = range_data[range_data.debit > 0].copy()
-            deposits = range_data[range_data.credit > 0].copy()
+            withdrawals = range_data.loc[range_data.debit > 0, :].copy()
+            deposits = range_data.loc[range_data.credit > 0, :].copy()
 
             columns = withdrawals.columns
             deposits_ix = (columns == 'credit') | (columns == 'code')
@@ -82,7 +82,6 @@ class CapitalOne(Account):
             daily_means = pd.DataFrame(daily_means.sum(axis=1), columns=['total_mean'])
             daily_std = pd.DataFrame(daily_std.sum(axis=1), columns=['total_std'])
             daily_freqs = pd.DataFrame(daily_freqs.sum(axis=1), columns=['total_freq'])
-
         else:
             daily_means, daily_std, daily_freqs = None, None, None
 
@@ -100,8 +99,6 @@ class CapitalOne(Account):
                 tmp_df = pd.read_csv(filepath_or_buffer=os.path.join(self.metadata.raw_files_dir, x),
                                      encoding='latin1',
                                      names=self.metadata.columns_names)
-                tmp_df.drop(labels=[0], inplace=True)
-                tmp_df.drop(columns=['posted_date'], inplace=True)
                 cash_flow = cash_flow.append(tmp_df, ignore_index=True)
 
         # Convert strings to actual date time objects
@@ -117,6 +114,8 @@ class CapitalOne(Account):
         cash_flow.drop_duplicates(subset=cash_flow.columns[cash_flow.columns != 'code'], inplace=True)
         for ix, row in cash_flow[cash_flow['code'] == 0].iterrows():
             cash_flow.loc[ix, 'code'] = get_common_codes(pd.DataFrame(row).T).values[0]
+            if cash_flow.loc[ix, 'code'] == "na":
+                cash_flow.loc[ix, 'code'] = self.get_account_specific_codes(pd.DataFrame(row).T).values[0]
 
         new_entries = cash_flow.shape[0] - old_entries_num
         if new_entries > 0:
@@ -126,4 +125,4 @@ class CapitalOne(Account):
                 self.to_pickle()
 
     def get_predicted_balance(self, days: int = 90) -> pd.DataFrame:
-        raise NotImplementedError("get_predicted_balance is not implemented for Capital One")
+        pass

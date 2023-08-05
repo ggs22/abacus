@@ -5,8 +5,8 @@ import re
 import numpy as np
 import pandas as pd
 
-from accounts.Accounts import AccountMetadata, get_common_codes
-from accounts.Account import Account
+from accounting.Account import AccountMetadata
+from accounting.Account import Account, get_common_codes
 
 
 class VisaPP(Account):

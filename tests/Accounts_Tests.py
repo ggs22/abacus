@@ -1,8 +1,9 @@
 import argparse
-import accounts as acc
+import accounting as acc
 
 import datetime
-from accounts import desjardins_mc, accounts
+from accounting import accounts, desjardins_mc
+from accounting.Account import Account
 
 
 def parse_args() -> argparse.Namespace:
@@ -40,18 +41,19 @@ def plot_predictions(force_new: bool = False, avg_interval=365, montecarlo_itera
     sim_dates = list()
     # sim_dates += [datetime.date(year=2023, month=1, day=31)]
     sim_dates += [datetime.date(year=2023, month=5, day=15)]
+    sim_dates += [datetime.date(year=2023, month=5, day=31)]
     # for i in range(3, 0, -1):
     #     sim_dates += [datetime.date(year=2022, month=(12 - i), day=6)]
     end_date = datetime.date(year=2023, month=12, day=31)
 
-    desjardins_mc.plot_prediction_compare(get_avg_method=accounts.get_data_range_daily_average,
-                                          start_date=start_date,
-                                          sim_dates=sim_dates,
-                                          end_date=end_date,
-                                          show=True,
-                                          force_new=force_new,
-                                          avg_interval=avg_interval,
-                                          montecarl_iterations=montecarlo_iterations)
+    acc.desjardins_mc.plot_prediction_compare(get_avg_method=accounts.get_data_range_daily_average,
+                                              start_date=start_date,
+                                              sim_dates=sim_dates,
+                                              end_date=end_date,
+                                              show=True,
+                                              force_new=force_new,
+                                              avg_interval=avg_interval,
+                                              montecarl_iterations=montecarlo_iterations)
 
 
 def get_averages():
@@ -89,15 +91,19 @@ if __name__ == "__main__":
     "tests"
 
     args = parse_args()
+
+    # for c in desjardins_accounts:
+    #     c.clear_month(year=2023, month=7, inplace=True)
+    #     c.update_from_raw_files()
     # pred = desjardins_mc.get_predicted_balance(end_date=datetime.date(year=2023, month=12, day=31),
     #                                            force_new=True)
     # bp_last_months(num_months=6)
 
     # cProfile.run(statement='plot_predictions(force_new=False)', sort='cumtime')
-    plot_predictions(force_new=args.force_new,
-                     avg_interval=args.avg_interval,
-                     montecarlo_iterations=args.montecarlo_iterations)
-    # print(accounts.get_most_recent_transaction_date())
-    bp_last_months(3)
-    # yearly_summary = accounts.get_yearly_summary(year=2022)
-    # accounts.plot_yearly_summary(year=2022, columns=yearly_summary.index[yearly_summary.index != 'pay'])
+    # plot_predictions(force_new=args.force_new,
+    #                  avg_interval=args.avg_interval,
+    #                  montecarlo_iterations=args.montecarlo_iterations)
+    # print(accounting.get_most_recent_transaction_date())
+    # bp_last_months(3)
+    # yearly_summary = accounting.get_yearly_summary(year=2022)
+    # accounting.plot_yearly_summary(year=2022, columns=yearly_summary.index[yearly_summary.index != 'pay'])
