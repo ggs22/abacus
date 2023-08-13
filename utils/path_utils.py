@@ -34,7 +34,7 @@ def accounting_data_dir() -> Path:
 
 @ensure_dir_exists
 def accounts_dir() -> Path:
-    return accounting_dir.joinpath('accounts')
+    return accounting_dir.joinpath('accounts_configs')
 
 
 @ensure_dir_exists
@@ -44,4 +44,4 @@ def pickle_objects_dir() -> Path:
 
 @validate_path_exists
 def common_assignations_path() -> Path:
-    return accounting_data_dir.joinpath('assignation.json')
+    return accounting_data_dir.joinpath('common_assignation.json')

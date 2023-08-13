@@ -18,10 +18,6 @@ def print_step(stp_name: str, stp_ix: int, stp_tot: int, msg: str = ''):
           f' - ' * (msg != '') + msg + '\n')
 
 
-def get_project_root():
-    return os.path.dirname(os.path.dirname(__file__))
-
-
 def get_css_selector_from_html(html_code: str, wait_time=5):
     pattern = "<(.*?) (.*?)>"
     regex = re.compile(pattern=pattern)
@@ -72,19 +68,6 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
             print(f'pay,{payday.year},{payday.month},{payday.day},0,{pay_amount},pay')
             # switch_week = not switch_week
 
-
-def print_pay_dates(start_date: datetime.date = datetime.datetime.today().date(),
-                    end_date: datetime.date = datetime.datetime.today().date() + datetime.timedelta(days=90)):
-    date = start_date
-    for i in range (0, (end_date - start_date).days // 7):
-        date = date + datetime.timedelta(days=i*14)
-        if date > end_date:
-            break
-        # Monday == 1 ... Sunday == 7
-        if date.isoweekday() == 4:
-            print(f'pay,{date.year},{date.month},{date.day},0,1200,pay')
-
-
 def calculate_pay(days: int, clear=True):
     """
     Calculates the pay for a given number of work days
@@ -113,20 +96,6 @@ root_dir = os.path.dirname(os.path.dirname(__file__))
 data_dir = os.path.join(root_dir, 'data')
 pickle_dir = os.path.join(root_dir, 'pickle_objects')
 
-months_map = {
-    1: ["january", 31],
-    2: ["february", 28],
-    3: ["march", 31],
-    4: ["april", 30],
-    5: ["may", 31],
-    6: ["june", 30],
-    7: ["july", 31],
-    8: ["august", 31],
-    9: ["september", 30],
-    10: ["october", 31],
-    11: ["november", 30],
-    12: ["december", 31]
-}
 
 if __name__ == "__main__":
     sdate = datetime.date(year=2023, month=1, day=2)

@@ -1,9 +1,10 @@
-import argparse
-import accounting as acc
-
 import datetime
-from accounting import accounts, desjardins_mc
-from accounting.Account import Account
+
+import pandas as pd
+
+import argparse
+from accounting import Account
+from accounting import accounts
 
 
 def parse_args() -> argparse.Namespace:
@@ -91,6 +92,34 @@ if __name__ == "__main__":
     "tests"
 
     args = parse_args()
+
+    acc: Account
+
+    # old_dejardins: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2021-07-31/desjardins.pkl")
+    # old_cibc: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2023-08-05/cibc.pkl")
+    old_capital_one: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2021-07-31/capital_one.pkl")
+    #
+    # old_cibc['withdrawal'] = old_cibc['debit']
+    # old_cibc['deposit'] = old_cibc['credit']
+    # old_cibc.drop(columns=['debit'], inplace=True)
+    # old_cibc.drop(columns=['credit'], inplace=True)
+    #
+    # replace_count = 0
+    # replace_idxs = list()
+    # for ix, row in old_cibc.iterrows():
+    #     replace_ix = accounting.cibc.transaction_data.date.array.date == row.date.date()
+    #     if sum(replace_ix) > 0:
+    #         for col in ['description', 'withdrawal', 'deposit']:
+    #             replace_ix = replace_ix & (accounting.cibc.transaction_data[col] == row[col])
+    #         if sum(replace_ix) > 0:
+    #             if 'na' == accounting.cibc.transaction_data.loc[replace_ix, 'code'].to_numpy()[0]:
+    #                 accounting.cibc.transaction_data.loc[replace_ix, 'code'] = row.code
+    #                 replace_idxs.append(replace_ix)
+    #                 replace_count += 1
+    #                 print(f"index: {accounting.cibc[replace_ix].index} -> {row.code}")
+    #
+    # for ix, row in old_cibc.iterrows():
+    #     print(ix)
 
     # for c in desjardins_accounts:
     #     c.clear_month(year=2023, month=7, inplace=True)

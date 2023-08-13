@@ -131,6 +131,6 @@ dmypy.json
 
 .idea/*
 accounting/data/*
-accounting/accounts/*
+accounting/accounts_configs/*
 images/
 pickle_objects/
