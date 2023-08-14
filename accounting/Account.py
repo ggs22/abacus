@@ -256,6 +256,7 @@ class Account:
                 if self.transaction_data is not None:
                     cash_flow = pd.concat([self.transaction_data, cash_flow], ignore_index=True)
 
+                cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')], inplace=True)
                 cash_flow.sort_values(by=list(self.conf.sorting_order), ascending=True, inplace=True)
                 cash_flow.reset_index(drop=True, inplace=True)
 
