@@ -265,8 +265,6 @@ class Account:
 
     def interactive_codes_update(self) -> None:
         na_idx = self.transaction_data.code == 'na'
-        cashflow = self.transaction_data[na_idx]
-        # descriptions = cashflow.loc[:, 'description']
 
         account_assignations_path = self.conf.assignation_file_path
         if not Path(account_assignations_path).exists():
@@ -359,3 +357,24 @@ class Account:
         else:
             cleared_period = None
         return cleared_period
+
+    def get_prediction(self) -> pd.DataFrame:
+        df: pd.DataFrame = deepcopy(self.transaction_data)
+        end_date = df.tail(1).date.array.date[0]
+        start_date = end_date - datetime.timedelta(days=365)
+        end_date.strftime('%Y-%m-%d')
+        stats = self.period_stats(date=start_date.strftime('%Y-%m-%d'), date_end=end_date.strftime('%Y-%m-%d'))
+        print(stats)
+
+    def histplot(self, period_seed_date: str, date_end: str = ""):
+        data, _ = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
+        if data is not None:
+            cols = list()
+            signs = list()
+            for col, sign in self.conf.numerical_columns:
+                cols += [col]
+                signs += [sign]
+            data['merged'] = (data.loc[:, cols] * signs).sum(axis=1)
+            sns.histplot(data=data, x='merged', log_scale=(False, True))
+            plt.title(f"{self.name}\n{period_seed_date}" + f" - {date_end}" * (date_end != ""))
+            plt.show()

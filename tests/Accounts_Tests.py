@@ -98,9 +98,12 @@ if __name__ == "__main__":
     stats = accounts[1].period_stats('2022')
     rents = accounts[1].get_period_data('2022')[0][(accounts[1].get_period_data('2022')[0]['code'] == 'rent')]
 
+    for acc in accounts:
+        acc.histplot('2023')
+
     # old_dejardins: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2021-07-31/desjardins.pkl")
     # old_cibc: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2023-08-05/cibc.pkl")
-    old_capital_one: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2021-07-31/capital_one.pkl")
+    # old_capital_one: pd.DataFrame = pd.read_pickle(r"/home/ggsanchez/repos/abacus/pickle_objects/backups/2021-07-31/capital_one.pkl")
     #
     # old_cibc['withdrawal'] = old_cibc['debit']
     # old_cibc['deposit'] = old_cibc['credit']
