@@ -68,6 +68,7 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
             print(f'pay,{payday.year},{payday.month},{payday.day},0,{pay_amount},pay')
             # switch_week = not switch_week
 
+
 def calculate_pay(days: int, clear=True):
     """
     Calculates the pay for a given number of work days
