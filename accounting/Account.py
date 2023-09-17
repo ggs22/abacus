@@ -2,11 +2,10 @@ import datetime
 import json
 import os
 import pickle
-import random
 import re
 
 from copy import deepcopy
-from typing import List, Tuple
+from typing import List, Tuple, Callable
 from pathlib import Path
 
 import colorama
@@ -15,13 +14,13 @@ import pandas as pd
 import seaborn as sns
 import hashlib
 import matplotlib
+import matplotlib.cm as cm
 
 from matplotlib import pyplot as plt
-from tqdm import tqdm
 from utils import path_utils as pu
 
 from utils.utils import data_dir
-from utils.datetime_utils import months_map, get_period_bounds
+from utils.datetime_utils import get_period_bounds
 from omegaconf.dictconfig import DictConfig
 
 
@@ -36,26 +35,6 @@ def _mad(x: pd.Series) -> pd.Series:
     res = abs(x - med)
     mad = res.median()
     return mad
-
-
-def _barplot_dataframe(d: pd.DataFrame, title: str, d_avg: pd.DataFrame = None, figsize=(7, 7), show=False):
-    d = d.sort_values(by='total')
-    d_avg = d_avg.sort_values(by='total')
-    fig = plt.figure(figsize=figsize, num=title)
-    clrs = ['green' if (x > 0) else 'red' for x in d['total']]
-    if d_avg is not None:
-        tick_labels = [f"{val:.2f} ({val_avg:.2f})" for val, val_avg in zip(d['total'].values, d_avg['total'].values)]
-    else:
-        tick_labels = str(d['total'].values)
-    g = sns.barplot(x='total', y=d.index, data=d, palette=clrs, tick_label=tick_labels)
-    for i, (t, lbl) in enumerate(zip(d['total'], tick_labels)):
-        g.text(x=(t * (t > 0) + 2), y=i, s=lbl)
-
-    plt.title(title)
-    plt.subplots_adjust(left=0.25)
-    if show:
-        plt.show()
-    return fig
 
 
 def print_codes_menu(codes, transaction):
@@ -111,7 +90,7 @@ def _get_md5(string: str):
 
 class Account:
 
-    def __init__(self, conf: DictConfig):
+    def __init__(self, conf: DictConfig, predict: Callable):
 
         self.conf = conf
         self.validate_config()
@@ -119,6 +98,12 @@ class Account:
         self.name = self.conf.name
         self.initial_balance = self.conf.initial_balance
         self.status = self.conf.status
+        self.color = cm.get_cmap(self.conf.cm_name)(self.conf.cm_index)
+
+        self.ignored_index: List[int] = None
+
+        self.predict = predict
+        self.prediction = None
 
         if self.conf.balance_column is not None:
             self.balance_sign = self.conf.balance_column[1]
@@ -159,11 +144,29 @@ class Account:
         return ret
 
     @property
+    def balance_column(self) -> pd.DataFrame:
+        if not self.has_balance_column:
+            balance_column = deepcopy((self.transaction_data[self.numerical_names] * self.numerical_signs))
+            balance_column = balance_column.cumsum().sum(axis=1)
+        else:
+            balance_column = deepcopy(self.transaction_data['balance'])
+            balance_column.columns = None
+
+        balance_column += self.initial_balance
+        balance_column *= self.balance_sign
+        balance_column = pd.DataFrame(balance_column)
+        balance_column[f"balance_{self.name}"] = balance_column[balance_column.columns[0]]
+        balance_column.index = self.transaction_data['date']
+        balance_column.drop(columns=balance_column.columns[0], inplace=True)
+
+        return balance_column
+
+    @property
     def has_balance_column(self) -> bool:
         return 'balance' in self.transaction_data.columns
 
     @property
-    def numerical_columns(self) -> List[str]:
+    def numerical_names(self) -> List[str]:
         return [name for name, _ in self.conf.numerical_columns]
 
     @property
@@ -171,12 +174,16 @@ class Account:
         return [sign for _, sign in self.conf.numerical_columns]
 
     @property
-    def positive_columns(self) -> List[str]:
-        return [name for name, sign in zip(self.numerical_columns, self.numerical_signs) if sign > 0]
+    def positive_names(self) -> List[str]:
+        return [name for name, sign in zip(self.numerical_names, self.numerical_signs) if sign > 0]
 
     @property
-    def negative_columns(self) -> List[str]:
-        return [name for name, sign in zip(self.numerical_columns, self.numerical_signs) if sign < 0]
+    def negative_names(self) -> List[str]:
+        return [name for name, sign in zip(self.numerical_names, self.numerical_signs) if sign < 0]
+
+    @property
+    def columns_names(self) -> List[str]:
+        return self.transaction_data.columns
 
     @property
     def most_recent_date(self) -> datetime.date:
@@ -184,19 +191,13 @@ class Account:
 
     @property
     def current_balance(self) -> float:
-        if 'balance' in self.transaction_data.columns:
-            bal = float(self.transaction_data.tail(1).balance.to_numpy()[0])
-        else:
-            names = [col_name for col_name, _ in self.conf.numerical_columns]
-            signs = [sign for _, sign in self.conf.numerical_columns]
-            bal = (self.transaction_data[names] * signs).sum().sum()
-        return np.round(bal, 2)
+        return self.balance_column.iloc[-1:, 0].item()
 
     def get_balance(self) -> pd.Series:
         if self.has_balance_column:
             balance = self.transaction_data['balance']
         else:
-            balance = (self.transaction_data[self.numerical_columns] * self.numerical_signs).cumsum().sum(axis=1)
+            balance = (self.transaction_data[self.numerical_names] * self.numerical_signs).cumsum().sum(axis=1)
             balance += self.conf.initial_balance if 'initial_balance' in self.conf else balance
         return balance
 
@@ -215,10 +216,14 @@ class Account:
 
         return period_data, days
 
-    def period_stats(self, date: str, date_end: str = "") -> pd.DataFrame:
+    def period_stats(self, date: str, date_end: str = "", **kwargs) -> pd.DataFrame:
         period_data, delta_days = self.get_period_data(date, date_end)
 
         if period_data is not None:
+
+            if self.ignored_index is not None:
+                period_data = period_data[~period_data.index.isin(self.ignored_index)]
+
             num_cols = [col for col, _ in self.conf.numerical_columns]
             signs = [sign for _, sign in self.conf.numerical_columns]
 
@@ -230,14 +235,23 @@ class Account:
             t_daily_prob = (t_counts / delta_days)
 
             t_sum = period_data[['merged', 'code']].groupby(by='code').sum(numeric_only=True).merged
-            t_ave = period_data[['merged', 'code']].groupby(by='code').mean(numeric_only=True).merged
+            # t_ave = period_data[['merged', 'code']].groupby(by='code').mean(numeric_only=True).merged
+            t_ave = t_sum/delta_days
             t_med = period_data[['merged', 'code']].groupby(by='code').median(numeric_only=True).merged
+
+            t_daily_std = dict()
+            for code in t_ave.index:
+                _d = period_data[period_data['code'] == code]['merged'].to_numpy()
+                t_daily_std[code] = np.sqrt(np.sum(np.power(_d - t_ave[code].item(), 2))/len(_d))
+            t_daily_std = pd.Series(t_daily_std)
+
             t_mad = period_data[['merged', 'code']].groupby(by='code')['merged'].apply(_mad)
             t_std = period_data[['merged', 'code']].groupby(by='code').std(numeric_only=True).merged
 
             period_stats = pd.DataFrame({'sums': t_sum,
-                                         'mean': t_ave,
-                                         'median': t_med,
+                                         'daily_mean': t_ave,
+                                         'transac_median': t_med,
+                                         'daily_std': t_daily_std,
                                          'mad': t_mad,
                                          'std': t_std,
                                          'daily_prob': t_daily_prob,
@@ -432,11 +446,11 @@ class Account:
                 if first_day < planned_date < last_day:
                     planned['date'].append(pd.to_datetime(planned_date))
                     if amount <= 0:
-                        planned[self.negative_columns[0]].append(amount)
-                        planned[self.positive_columns[0]].append(0)
+                        planned[self.negative_names[0]].append(amount)
+                        planned[self.positive_names[0]].append(0)
                     elif amount > 0:
-                        planned[self.negative_columns[0]].append(0)
-                        planned[self.positive_columns[0]].append(amount)
+                        planned[self.negative_names[0]].append(0)
+                        planned[self.positive_names[0]].append(amount)
                     planned['description'].append(PREDICTED_BALANCE)
                     planned['code'].append(transactions[2])
 
@@ -451,16 +465,18 @@ class Account:
                 if ix > 0 and planned_month == 1:
                     year_carry_over += 1
                 planned_date = datetime.date.fromisoformat(
-                    f"{str(first_day.year + year_carry_over)}-{'0' * (planned_month < 10)}{planned_month}-{'0' * (int(transactions[1]) < 10)}{transactions[1]}"
+                    f"{str(first_day.year + year_carry_over)}-"
+                    f"{'0' * (planned_month < 10)}{planned_month}-"
+                    f"{'0' * (int(transactions[1]) < 10)}{transactions[1]}"
                 )
                 if first_day < planned_date < last_day:
                     planned['date'].append(pd.to_datetime(planned_date))
                     if amount <= 0:
-                        planned[self.negative_columns[0]].append(amount)
-                        planned[self.positive_columns[0]].append(0)
+                        planned[self.negative_names[0]].append(amount)
+                        planned[self.positive_names[0]].append(0)
                     elif amount > 0:
-                        planned[self.negative_columns[0]].append(0)
-                        planned[self.positive_columns[0]].append(amount)
+                        planned[self.negative_names[0]].append(0)
+                        planned[self.positive_names[0]].append(amount)
                     planned['description'].append(PREDICTED_BALANCE)
                     planned['code'].append(code)
 
@@ -475,11 +491,11 @@ class Account:
                 code = unique_transaction[2]
                 if first_day < planned_date < last_day:
                     if amount <= 0:
-                        planned[self.negative_columns[0]].append(amount)
-                        planned[self.positive_columns[0]].append(0)
+                        planned[self.negative_names[0]].append(amount)
+                        planned[self.positive_names[0]].append(0)
                     elif amount > 0:
-                        planned[self.negative_columns[0]].append(0)
-                        planned[self.positive_columns[0]].append(amount)
+                        planned[self.negative_names[0]].append(0)
+                        planned[self.positive_names[0]].append(amount)
 
                     planned['date'].append(pd.to_datetime(planned_date))
                     planned['description'].append(PREDICTED_BALANCE)
@@ -499,176 +515,40 @@ class Account:
 
         return planned
 
-    def get_balance_prediction(self, predicted_days: int = 365, average_over: int = 365) -> pd.DataFrame:
-        df: pd.DataFrame = deepcopy(self.transaction_data)
-        period_end_date = df.tail(1).date.array.date[0]
-        period_start_date = period_end_date - datetime.timedelta(days=average_over)
 
-        stats = self.period_stats(period_start_date.strftime('%Y-%m-%d'),
-                                  period_end_date.strftime('%Y-%m-%d'))
+    def plot_prediction(self,
+                        predicted_days: int = 365,
+                        figure_name: str = "",
+                        simulation_date: str = "",
+                        **kwargs) -> None:
 
-        # planned_transactions = self.get_planned_transactions(period_end_date.strftime('%Y-%m-%d'), predicted_days)
-        # daily_expense = stats[stats['sums'] < 0].sum(axis=0).sums / average_over
-        daily_expense = stats.sum(axis=0).sums / average_over
-        pred = {col_name: list() for col_name in df.columns}
-        for days_ix, _ in tqdm(enumerate(range(predicted_days))):
-            amount = daily_expense
-            pred['date'].append(days_ix + 1)
-            if amount <= 0:
-                pred[self.negative_columns[0]].append(amount)
-                pred[self.positive_columns[0]].append(0)
-            else:
-                pred[self.negative_columns[0]].append(0)
-                pred[self.positive_columns[0]].append(amount)
-            pred['description'].append(PREDICTED_BALANCE)
-            pred['code'].append("other")
+            pred: pd.DataFrame | None = self.predict(account=self,
+                                                     predicted_days=predicted_days,
+                                                     simulation_date=simulation_date,
+                                                     **kwargs)
+            self.prediction = deepcopy(pred)
 
-        keys_to_pop = list()
-        for key, val in pred.items():
-            if len(val) == 0:
-                keys_to_pop.append(key)
-        for key in keys_to_pop:
-            pred.pop(key)
-        pred = pd.DataFrame(pred)
+            if pred is not None:
+                mean = pred.loc[:, ['date', 'balance']].groupby(by='date').mean()
+                std = pred.loc[:, ['date', 'balance']].groupby(by='date').std()
+                plt.figure(num=figure_name)
+                plt.plot(mean,
+                         label="",
+                         linestyle='--',
+                         c=self.color)
+                plt.fill_between(x=mean.index,
+                                 y1=(mean-std)['balance'],
+                                 y2=(mean+std)['balance'],
+                                 color=self.color,
+                                 alpha=0.3)
 
-        if not self.has_balance_column:
-            df['balance'] = (df[self.numerical_columns] * self.numerical_signs).cumsum().sum(axis=1)
-        df['balance'] += self.initial_balance
-        df['balance'] *= self.balance_sign
-
-        current_balance = df.tail(1).balance.item()
-
-        pred['date'] = pd.to_datetime(pred['date'].apply(lambda i: period_end_date + datetime.timedelta(days=i)))
-
-        # pred = pd.concat([pred, planned_transactions], axis=0)
-        pred.sort_values(by='date', ascending=True, ignore_index=True, inplace=True)
-        pred = pred.replace(np.nan, 0)
-        pred['balance'] = pred.loc[:, [self.positive_columns[0], self.negative_columns[0]]].cumsum().sum(axis=1) + current_balance
-
-        pred = pd.concat([df, pred], axis=0)
-        pred.reset_index(drop=True, inplace=True)
-
-        return pred
-
-    def get_mc_prediction2(self, predicted_days: int = 365, mc_iterations: int = 500) -> pd.DataFrame:
-        # get period data
-        df: pd.DataFrame = deepcopy(self.transaction_data)
-        period_end_date = df.tail(1).date.array.date[0]
-        period_start_date = period_end_date - datetime.timedelta(days=365)
-        period_data, days_in_period = self.get_period_data(period_start_date.strftime('%Y-%m-%d'),
-                                                           period_end_date.strftime('%Y-%m-%d'))
-
-        stats = self.period_stats(period_start_date.strftime('%Y-%m-%d'),
-                                  period_end_date.strftime('%Y-%m-%d'))
-
-        if not self.has_balance_column:
-            period_data['balance'] = (period_data[self.numerical_columns] * self.numerical_signs).cumsum().sum(axis=1)
-        period_data['balance'] += self.initial_balance
-        period_data['balance'] *= self.balance_sign
-
-        current_balance = period_data.tail(1).balance.item()
-
-        pred = {col_name: list() for col_name in period_data.columns}
-        for days_ix, _ in tqdm(enumerate(range(predicted_days))):
-            for ix, row in stats.iterrows():
-                occurence_prob = random.random()
-                occured = occurence_prob <= row['daily_prob']
-                if occured:
-                    amount = random.gauss(mu=row['mean'], sigma=row['mad'])
-                    pred['date'].append(days_ix + 1)
-                    if amount <= 0:
-                        pred[self.negative_columns[0]].append(amount)
-                        pred[self.positive_columns[0]].append(0)
-                    else:
-                        pred[self.negative_columns[0]].append(0)
-                        pred[self.positive_columns[0]].append(amount)
-                    pred['description'].append(PREDICTED_BALANCE)
-                    pred['code'].append(ix)
-
-        keys_to_pop = list()
-        for key, val in pred.items():
-            if len(val) == 0:
-                keys_to_pop.append(key)
-        for key in keys_to_pop:
-            pred.pop(key)
-        pred = pd.DataFrame(pred)
-
-        pred['date'] = pd.to_datetime(pred['date'].apply(lambda i: period_end_date + datetime.timedelta(days=i)))
-        pred['balance'] = pred.loc[:, [self.positive_columns[0], self.negative_columns[0]]].cumsum().sum(axis=1) + current_balance
-        pred = pred.replace(np.nan, 0)
-        pred = pd.concat([period_data, pred], axis=0)
-        pred.reset_index(drop=True, inplace=True)
-
-        return pred
-
-    def get_mc_prediction(self, predicted_days: int = 365, mc_iterations: int = 500) -> pd.DataFrame:
-        # get period data
-        df: pd.DataFrame = deepcopy(self.transaction_data)
-        period_end_date = df.tail(1).date.array.date[0]
-        period_start_date = period_end_date - datetime.timedelta(days=365)
-        period_data, days_in_period = self.get_period_data(period_start_date.strftime('%Y-%m-%d'), period_end_date.strftime('%Y-%m-%d'))
-
-        if not self.has_balance_column:
-            period_data['balance'] = (period_data[self.numerical_columns] * self.numerical_signs).cumsum().sum(axis=1)
-        period_data['balance'] += self.initial_balance
-        period_data['balance'] *= self.balance_sign
-
-        current_balance = period_data.tail(1).balance.item()
-
-        # sample from period data (MC iterations x Num. simulated days) times.
-        daily_transaction_frequency = period_data.shape[0] / days_in_period
-        sure_transactions: int = int(np.floor(daily_transaction_frequency))
-        prob_transactions: float = daily_transaction_frequency % 1
-
-        mc_iterations_list: List[List[pd.DataFrame]] = list()
-        for _ in tqdm(range(mc_iterations), desc=f'Sampling {self.name}...'):
-            mc_iterations_list.append(list())
-            last_ix = len(mc_iterations_list) - 1
-            for days_ix, _ in enumerate(range(predicted_days)):
-                occurence_prob = random.random()
-                occured = occurence_prob < prob_transactions
-
-                num_samples = (sure_transactions + 1) * occured + sure_transactions * (not occured)
-                # sample = period_data.sample(n=num_samples)
-                sample = period_data.sample(n=num_samples, replace=False)
-                sample.date = days_ix + 1
-                mc_iterations_list[last_ix].append(sample)
-
-        pred = period_data
-        for ix, iteration_list in enumerate(tqdm(mc_iterations_list, desc=f'Processing {self.name}...')):
-            df = pd.concat(iteration_list)
-            df.loc[:, 'date'] = df.loc[:, 'date'].apply(lambda i: pd.to_datetime(period_end_date + datetime.timedelta(days=i)))
-            df.loc[:, 'description'] = MC_SAMPLING
-            df.loc[:, 'balance'] = (df[self.numerical_columns] * self.numerical_signs).cumsum().sum(axis=1) + current_balance
-            mc_iterations_list[ix] = df
-
-        pred = pd.concat([pred, *mc_iterations_list])
-        pred.sort_values(by='date', ascending=True, inplace=True, ignore_index=True)
-        pred.reset_index(inplace=True, drop=True)
-
-        return pred
-
-    def plot_mc_prediction(self, predicted_days: int = 365, mc_iterations: int = 500) -> None:
-        pred = self.get_mc_prediction(predicted_days=predicted_days, mc_iterations=mc_iterations)
-        past_ix = pred.description != MC_SAMPLING
-        pred_ix = pred.description == MC_SAMPLING
-        pp = pred[pred_ix].groupby(by='date').mean(numeric_only=True)
-        plt.plot(pred[past_ix].date, pred[past_ix].balance)
-        plt.plot(pp.index, pp.balance)
-        plt.title(f"Prediction {predicted_days} days {self.name}")
-        plt.xticks(rotation=90)
-
-    def plot_prediction(self, predicted_days: int = 365) -> None:
-        pred = self.get_balance_prediction(predicted_days=predicted_days)
-        past_ix = pred.description != PREDICTED_BALANCE
-        pred_ix = pred.description == PREDICTED_BALANCE
-        plt.plot(pred[past_ix].date, pred[past_ix].balance)
-        plt.plot(pred[pred_ix].date, pred[pred_ix].balance)
-        plt.title(f"Prediction {predicted_days} days {self.name}")
-        plt.xticks(rotation=90)
+    def plot(self, figure_name: str = None):
+        plt.figure(num=figure_name)
+        plt.plot(self.balance_column, label=self.name, c=self.color)
 
     def histplot(self, period_seed_date: str, date_end: str = ""):
         data, _ = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
+        plt.figure(f"Histplot {self.name} - {period_seed_date}" + f" {date_end}" * (date_end != ""))
         if data is not None:
             cols = list()
             signs = list()
@@ -676,21 +556,29 @@ class Account:
                 cols += [col]
                 signs += [sign]
             data['merged'] = (data.loc[:, cols] * signs).sum(axis=1)
-            sns.histplot(data=data, x='merged', log_scale=(False, True))
+            sns.histplot(data=data, x='merged', log_scale=(False, False), color=self.color)
             plt.title(f"{self.name}\n{period_seed_date}" + f" - {date_end}" * (date_end != ""))
 
     def barplot(self, period_seed_date: str, date_end: str = ""):
-        data, _ = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
+        data, period_length = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
         if data is not None:
-            cols = list()
-            signs = list()
-            for col, sign in self.conf.numerical_columns:
-                cols.append(col)
-                signs.append(sign)
-            data = data.groupby(by='code').sum(numeric_only=True)
-            data['total'] = (data.loc[:, cols] * signs).sum(axis=1)
+            data: pd.DataFrame = data.groupby(by='code').sum(numeric_only=True)
+            data['total'] = (data.loc[:, self.numerical_names] * self.numerical_signs).sum(axis=1)
+            data.sort_values(by='total', ascending=False, inplace=True)
             plt.figure(num=f"{self.name} - {period_seed_date}")
-            plt.title(label=f"{self.name} - {period_seed_date}")
-            sns.barplot(data, x='total', y=data.index)
+
+            income = data[data['total'] > 0]['total'].sum()
+            expenses = data[data['total'] <= 0]['total'].sum()
+            plt.title(label=f"{self.name} - {period_seed_date}\n"
+                            f"in: {income: .2f}, out: {expenses: .2f}, bal: {income+expenses: .2f}")
+            colors = list()
+            for amount in data.total:
+                color = (.75, 0, 0) if amount <= 0 else (0, .75, 0)
+                colors.append(color)
+            plt.barh(y=data.index, width=data.total, color=colors)
+            for stat in data.index:
+                plt.text(x=max(0, data.loc[stat, 'total']) + 10,
+                         y=stat,
+                         s=f"{data.loc[stat, 'total']: .2f} / {data.loc[stat, 'total']/period_length: .2f}")
 
 

@@ -9,11 +9,16 @@ matplotlib==3.7.2
 numpy==1.23.5
 omegaconf==2.3.0
 packaging==23.0
-pandas==2.0.3
+pandas==2.1.1
 path==15.0.1
 Pillow==9.3.0
 pyparsing==2.4.7
 pyperclip==1.8.2
+PyQt5==5.15.9
+PyQt5-Qt5==5.15.2
+PyQt5-sip==12.12.2
+PyQt6-Qt6==6.5.2
+PyQt6-sip==13.5.2
 python-dateutil==2.8.2
 pytz==2020.4
 PyYAML==6.0.1
