@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import pandas as pd
 
-from accounting.Account import Account, PREDICTED_BALANCE
-from accounting.prediction_strategies import get_balance_prediction
+from accounting.Account import Account
+from accounting.prediction_strategies import PredictionStrategy
 
 
 def finalize_plot(plot_func: callable):
@@ -60,8 +60,10 @@ class AccountsList:
     def get_balance_prediction(self, predicted_days: int = 365, **kwargs) -> pd.DataFrame:
         preds: List[pd.DataFrame] = list()
         for account in self:
-            if account.status == "OPEN":
-                pred: pd.DataFrame = get_balance_prediction(account=account, predicted_days=predicted_days, **kwargs)
+            pred: pd.DataFrame = self.predict_strategy.predict(account=account,
+                                                               predicted_days=predicted_days,
+                                                               **kwargs)
+            if pred is not None:
                 reduced_pred = pred.loc[:, ['date', 'description', 'balance']].groupby(
                     by=['description', 'date'], group_keys=False
                 ).last()
@@ -88,6 +90,7 @@ class AccountsList:
 
     @finalize_plot
     def plot_predictions(self,
+                         predict_strategy: PredictionStrategy,
                          predicted_days: int = 356,
                          figure_name: str = "",
                          simulation_date: str = "",
@@ -95,10 +98,11 @@ class AccountsList:
         mean_bal = list()
         std_bal = list()
         for acc in self:
-            acc.plot_prediction(predicted_days=predicted_days,
-                                figure_name=figure_name,
-                                simulation_date=simulation_date,
-                                **kwargs)
+            predict_strategy.plot_prediction(account=acc,
+                                             predicted_days=predicted_days,
+                                             figure_name=figure_name,
+                                             simulation_date=simulation_date,
+                                             **kwargs)
             if acc.prediction is not None:
                 pred = acc.prediction.loc[:, ['date', 'balance']].rename(columns={'balance': f'balance_{acc.name}'})
                 mean_bal.append(pred.groupby(by='date').mean())

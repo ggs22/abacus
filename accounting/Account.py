@@ -90,7 +90,7 @@ def _get_md5(string: str):
 
 class Account:
 
-    def __init__(self, conf: DictConfig, predict: Callable):
+    def __init__(self, conf: DictConfig):
 
         self.conf = conf
         self.validate_config()
@@ -102,7 +102,6 @@ class Account:
 
         self.ignored_index: List[int] = None
 
-        self.predict = predict
         self.prediction = None
 
         if self.conf.balance_column is not None:
@@ -216,7 +215,7 @@ class Account:
 
         return period_data, days
 
-    def period_stats(self, date: str, date_end: str = "", **kwargs) -> pd.DataFrame:
+    def period_stats(self, date: str, date_end: str = "", **kwargs) -> pd.DataFrame | None:
         period_data, delta_days = self.get_period_data(date, date_end)
 
         if period_data is not None:
@@ -280,6 +279,14 @@ class Account:
     def save(self):
         with open(self.conf.serialized_object_path, 'wb') as f:
             pickle.dump(obj=self, file=f)
+
+    def export(self):
+        export_dir = pu.accounting_data_dir.joinpath('exports', self.name)
+        export_dir.mkdir(parents=True, exist_ok=True)
+        with open(export_dir.joinpath(f"transaction_data_{self.name}.csv"), 'w') as transaction_export:
+            self.transaction_data.to_csv(transaction_export, sep="\t")
+        with open(export_dir.joinpath(f"processed_files_{self.name}.pkl"), 'wb') as processed_files_export:
+            pickle.dump(self.processed_data_files, processed_files_export)
 
     def _import_csv_files(self) -> None:
         pattern = re.compile(pattern="(conciliation_)?\d{4}[_-]\d{2}([_-]\d{2})?.csv")
@@ -515,41 +522,14 @@ class Account:
 
         return planned
 
-
-    def plot_prediction(self,
-                        predicted_days: int = 365,
-                        figure_name: str = "",
-                        simulation_date: str = "",
-                        **kwargs) -> None:
-
-            pred: pd.DataFrame | None = self.predict(account=self,
-                                                     predicted_days=predicted_days,
-                                                     simulation_date=simulation_date,
-                                                     **kwargs)
-            self.prediction = deepcopy(pred)
-
-            if pred is not None:
-                mean = pred.loc[:, ['date', 'balance']].groupby(by='date').mean()
-                std = pred.loc[:, ['date', 'balance']].groupby(by='date').std()
-                plt.figure(num=figure_name)
-                plt.plot(mean,
-                         label="",
-                         linestyle='--',
-                         c=self.color)
-                plt.fill_between(x=mean.index,
-                                 y1=(mean-std)['balance'],
-                                 y2=(mean+std)['balance'],
-                                 color=self.color,
-                                 alpha=0.3)
-
     def plot(self, figure_name: str = None):
         plt.figure(num=figure_name)
         plt.plot(self.balance_column, label=self.name, c=self.color)
 
     def histplot(self, period_seed_date: str, date_end: str = ""):
         data, _ = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
-        plt.figure(f"Histplot {self.name} - {period_seed_date}" + f" {date_end}" * (date_end != ""))
         if data is not None:
+            plt.figure(f"Histplot {self.name} - {period_seed_date}" + f" {date_end}" * (date_end != ""))
             cols = list()
             signs = list()
             for col, sign in self.conf.numerical_columns:
