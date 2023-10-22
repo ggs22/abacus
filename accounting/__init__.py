@@ -1,18 +1,21 @@
+import logging
+
 from omegaconf import OmegaConf
-from tqdm import tqdm
 
 import utils.path_utils as pu
 
 from accounting.Account import Account
 from accounting.account_list import AccountsList
-from accounting.prediction_strategies import PredictionStrategy, PredictionByMeanStrategy, BasicMonteCarloStrategy
+
+logging.basicConfig(level=logging.INFO)
 
 accounts = list()
 desjardins_accounts = list()
 
 # Dynamically load NewRefactoredAccount objects int the accounting module from the corresponding yaml files
 config_files = [file for file in pu.accounts_dir.glob('*.yaml')]
-for yaml_file in tqdm(config_files, desc="Loading accounts..."):
+config_files.sort()
+for yaml_file in config_files:
     fname = yaml_file.stem
     conf = OmegaConf.load(yaml_file)
     globals()[fname] = Account(conf=conf)

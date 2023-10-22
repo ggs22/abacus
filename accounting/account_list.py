@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Dict
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -152,3 +152,11 @@ class AccountsList:
             plt.text(x=max(0, data[stat]) + 10,
                      y=stat,
                      s=f"{data[stat]: .2f} / {data[stat] / overall_len: .2f}")
+
+    def filter_by_code(self, code: str, period_seed_date: str = "", date_end: str = "") -> Dict[str, pd.DataFrame]:
+        filtered_data = dict()
+        for account in self:
+            data = account.filter_by_code(code=code, period_seed_date=period_seed_date, date_end=date_end)
+            if data is not None:
+                filtered_data[account.name] = data
+        return filtered_data

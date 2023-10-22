@@ -1,7 +1,9 @@
 import matplotlib.pyplot as plt
 
 from accounting import accounts
-from accounting.prediction_strategies import PredictionByMeanStrategy, BasicMonteCarloStrategy
+from accounting.prediction_strategies import (
+    PredictionByMeanStrategy, DateBasedMonteCarloStrategy
+)
 
 
 if __name__ == "__main__":
@@ -16,17 +18,23 @@ if __name__ == "__main__":
 
     accounts.plot(fig_name=fig_name)
 
-    accounts[0].ignored_index = [690, 692, 703, 708, 714, 717, 727]
-    accounts[4].ignored_index = [454, 455, 487, 488, 492]
+    accounts['CIBC'].ignored_index = [690, 692, 703, 708, 714, 717, 727]
+    accounts['DesjardinsOP'].ignored_index = [1581, 1586, 1587, 1588, 1673, 1674, 1675, 1676, 1681, 1682]
+    accounts['DesjardinsMC'].ignored_index = [454, 455, 487, 488, 491, 492]
 
-    # for sim_date in ["", "2023-08-31", "2023-06-15"]:
-    for strategy in [BasicMonteCarloStrategy, PredictionByMeanStrategy]:
-        for sim_date in [""]:
+    # TODO - account-specific strategies (List[PredictionStrategy])
+    # TODO - planned transaction & mean Strategy to implement
+    for strategy in [
+        PredictionByMeanStrategy,
+        DateBasedMonteCarloStrategy,
+    ]:
+        for sim_date in ['2023-09-30', ""]:
             accounts.plot_predictions(predict_strategy=strategy(),
-                                      predicted_days=365,
+                                      predicted_days=365*3,
                                       simulation_date=sim_date,
-                                      mc_iterations=100,
-                                      figure_name=fig_name)
+                                      mc_iterations=50,
+                                      figure_name=fig_name,
+                                      force_new=False)
     for year in [
         '2023',
         '2022',

@@ -3,6 +3,7 @@ import json
 import os
 import pickle
 import re
+import logging
 
 from copy import deepcopy
 from typing import List, Tuple, Callable
@@ -104,6 +105,8 @@ class Account:
 
         self.prediction = None
 
+        self.logger = logging.getLogger(f"{self.__class__.__name__} - {self.name}")
+
         if self.conf.balance_column is not None:
             self.balance_sign = self.conf.balance_column[1]
         else:
@@ -116,11 +119,13 @@ class Account:
             self.planned_transactions = json.load(fp=f)
 
         # If serialized objects exist, load them.
-        if Path(self.conf.serialized_object_path).exists():
-            with open(self.conf.serialized_object_path, 'rb') as f:
+        if self.serialized_self_path.exists():
+            logger = logging.getLogger(self.logger_name)
+            with open(self.serialized_self_path, 'rb') as f:
                 serialized_properties = pickle.load(file=f)
                 for prop, value in serialized_properties.__dict__.items():
                     setattr(self, prop, value)
+                logger.info(f"loaded from {self.serialized_self_path}")
         # Otherwise initialize properties from scratch.
         else:
             # the following objects will be serialized by the self.save() function
@@ -141,6 +146,14 @@ class Account:
     def __getitem__(self, item):
         ret = self.transaction_data.loc[item, :]
         return ret
+
+    @property
+    def logger_name(self) -> str:
+        return f"Account_{self.name}"
+
+    @property
+    def serialized_self_path(self) -> Path:
+        return Path(self.conf.serialized_objects_dir).joinpath(f"{self.name}.pkl")
 
     @property
     def balance_column(self) -> pd.DataFrame:
@@ -192,6 +205,108 @@ class Account:
     def current_balance(self) -> float:
         return self.balance_column.iloc[-1:, 0].item()
 
+    def _remove_csv_file_from_records(self, csv_file: Path | str) -> None:
+        csv_file = Path(csv_file)
+        file_hash = _get_md5(csv_file.name)
+        try:
+            self.processed_data_files.remove(file_hash)
+        except IndexError as e:
+            self.logger.error(f"Couldn't remove {str(csv_file)} from {self.name} records!:\n{e}")
+
+    def _import_csv_files(self) -> None:
+        pattern = re.compile(pattern=r"(conciliation_)?\d{4}([_-]\d{2})?([_-]\d{2})?.csv")
+        csv_records_files = list()
+        for file in Path(pu.accounting_data_dir).joinpath(self.conf.raw_files_dir).glob('*.csv'):
+            if pattern.match(file.name):
+                csv_records_files.append(file)
+        for csv_file in csv_records_files:
+            file_hash = _get_md5(csv_file.name)
+            if file_hash not in self.processed_data_files:
+                self.logger.info(f"Importing new data from {csv_file.name} for {self.name}")
+
+                cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
+                                        encoding=self.conf.encoding,
+                                        names=self.conf.columns_names)
+
+                # Check if there is a filter to apply on the rows:
+                if self.conf.rows_selection is not None:
+                    drop_index = cash_flow[
+                        cash_flow[self.conf.rows_selection.filter_column] != self.conf.rows_selection.filter_value
+                        ].index
+                    cash_flow.drop(index=drop_index, inplace=True, )
+
+                # Make sure all imported data types are coherent
+                if 'date' not in cash_flow.columns:
+                    raise ValueError(f"The Account class expects a column named 'date'! Got: {cash_flow.columns}")
+                else:
+                    cash_flow['date'] = pd.to_datetime(cash_flow['date'], format=self.conf.date_format)
+
+                for numerical_column in self.conf.numerical_columns:
+                    col_name, col_sign = numerical_column[0], numerical_column[1]
+                    cash_flow[col_name] = pd.to_numeric(cash_flow[col_name])
+
+                # Automatically assign commone transaction code
+                cash_flow['code'] = get_common_codes(cash_flow).to_numpy()
+                na_idx = cash_flow['code'] == 'na'
+                cash_flow.loc[na_idx, 'code'] = self._get_account_specific_codes(cash_flow[na_idx])
+                cash_flow = cash_flow.replace(np.nan, 0)
+
+                if self.transaction_data is not None:
+                    cash_flow = pd.concat([self.transaction_data, cash_flow], ignore_index=True)
+
+                cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')], inplace=True)
+                cash_flow.sort_values(by=list(self.conf.sorting_order), ascending=True, inplace=True)
+                cash_flow.reset_index(drop=True, inplace=True)
+
+                self.transaction_data = cash_flow
+                self.processed_data_files.add(file_hash)
+
+    def _get_account_specific_codes(self, cashflow: pd.DataFrame, description_column="description") -> List[str]:
+        """
+        This function returns a vector corresponding to all transaction code associated to the description vector given
+        as argument
+
+        args:
+            - description   A vector of transaction description (often reffered to as "object, item, description, etc."
+                            in bank statements). The relations between the descriptions and the codes are contained in
+                            "assignations_<account_name>.csv"
+        """
+        descriptions = cashflow.loc[:, description_column]
+
+        account_assignations_path = self.conf.assignation_file_path
+        if not Path(account_assignations_path).exists():
+            raise FileNotFoundError(f"Assignation file not found at {account_assignations_path}")
+
+        with open(account_assignations_path, 'r') as f:
+            assignations = json.load(f)
+
+        codes = list()
+
+        # for each transaction entry...
+        for index, description in enumerate(descriptions):
+            codes.append("na")
+            found = False
+
+            # for each transaction code in the assignations list...
+            for code, lookup_values in assignations.items():
+
+                # if the assignations are not empty...
+                if len(lookup_values) > 0:
+
+                    # for each lookup value...
+                    for lookup_value in lookup_values:
+
+                        # check if the lookup value is found in the description.
+                        found = description.lower().find(lookup_value.lower()) != -1
+
+                        # if so assign the corresponding code to the trasaction and break
+                        if found:
+                            codes[len(codes) - 1] = code
+                            break
+                if found:
+                    break
+        return codes
+
     def get_balance(self) -> pd.Series:
         if self.has_balance_column:
             balance = self.transaction_data['balance']
@@ -241,7 +356,7 @@ class Account:
             t_daily_std = dict()
             for code in t_ave.index:
                 _d = period_data[period_data['code'] == code]['merged'].to_numpy()
-                t_daily_std[code] = np.sqrt(np.sum(np.power(_d - t_ave[code].item(), 2))/len(_d))
+                t_daily_std[code] = np.sqrt(np.sum(np.power(_d - t_ave[code].item(), 2))/delta_days)
             t_daily_std = pd.Series(t_daily_std)
 
             t_mad = period_data[['merged', 'code']].groupby(by='code')['merged'].apply(_mad)
@@ -277,8 +392,12 @@ class Account:
                                             f"parameter. Got: {self.conf.columns_names}.")
 
     def save(self):
-        with open(self.conf.serialized_object_path, 'wb') as f:
+        destination = self.serialized_self_path
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        with open(str(destination), 'wb') as f:
             pickle.dump(obj=self, file=f)
+            logger = logging.getLogger(self.logger_name)
+            logger.info(f"Saved to {str(destination)}")
 
     def export(self):
         export_dir = pu.accounting_data_dir.joinpath('exports', self.name)
@@ -288,134 +407,43 @@ class Account:
         with open(export_dir.joinpath(f"processed_files_{self.name}.pkl"), 'wb') as processed_files_export:
             pickle.dump(self.processed_data_files, processed_files_export)
 
-    def _import_csv_files(self) -> None:
-        pattern = re.compile(pattern="(conciliation_)?\d{4}[_-]\d{2}([_-]\d{2})?.csv")
-        csv_records_files = list()
-        for file in Path(pu.accounting_data_dir).joinpath(self.conf.raw_files_dir).glob('*.csv'):
-            if pattern.match(file.name):
-                csv_records_files.append(file)
-        for csv_file in csv_records_files:
-            file_hash = _get_md5(csv_file.name)
-            if file_hash not in self.processed_data_files:
-                print(f"Importing new data from {csv_file.name}")
-
-                cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
-                                        encoding=self.conf.encoding,
-                                        names=self.conf.columns_names,
-                                        header=0)
-
-                # Check if there is a filter to apply on the rows:
-                if self.conf.rows_selection is not None:
-                    drop_index = cash_flow[
-                        cash_flow[self.conf.rows_selection.filter_column] != self.conf.rows_selection.filter_value
-                        ].index
-                    cash_flow.drop(index=drop_index, inplace=True, )
-
-                # Make sure all imported data types are coherent
-                if 'date' not in cash_flow.columns:
-                    raise ValueError(f"The Account class expects a column named 'date'! Got: {cash_flow.columns}")
-                else:
-                    cash_flow['date'] = pd.to_datetime(cash_flow['date'], format=self.conf.date_format)
-
-                for numerical_column in self.conf.numerical_columns:
-                    col_name, col_sign = numerical_column[0], numerical_column[1]
-                    cash_flow[col_name] = pd.to_numeric(cash_flow[col_name])
-
-                # Automatically assign commone transaction code
-                cash_flow['code'] = get_common_codes(cash_flow).to_numpy()
-                na_idx = cash_flow['code'] == 'na'
-                cash_flow.loc[na_idx, 'code'] = self._get_account_specific_codes(cash_flow[na_idx])
-                cash_flow = cash_flow.replace(np.nan, 0)
-
-                if self.transaction_data is not None:
-                    cash_flow = pd.concat([self.transaction_data, cash_flow], ignore_index=True)
-
-                cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')], inplace=True)
-                cash_flow.sort_values(by=list(self.conf.sorting_order), ascending=True, inplace=True)
-                cash_flow.reset_index(drop=True, inplace=True)
-
-                self.transaction_data = cash_flow
-                self.processed_data_files.add(file_hash)
-
     def interactive_codes_update(self) -> None:
         na_idx = self.transaction_data.code == 'na'
 
-        account_assignations_path = self.conf.assignation_file_path
-        if not Path(account_assignations_path).exists():
-            raise FileNotFoundError(f"Assignation file not found at {account_assignations_path} "
-                                    f"for account {self.name}")
+        if sum(na_idx) > 0:
+            account_assignations_path = self.conf.assignation_file_path
+            if not Path(account_assignations_path).exists():
+                raise FileNotFoundError(f"Assignation file not found at {account_assignations_path} "
+                                        f"for account {self.name}")
 
-        with open(account_assignations_path, 'r') as f:
-            assignations = json.load(f)
+            with open(account_assignations_path, 'r') as f:
+                assignations = json.load(f)
 
-        for row in self.transaction_data[na_idx].itertuples():
-            code_headers = [col_name for col_name, _ in assignations.items()]
-            show_menu: bool = True
-            while show_menu:
-                print_codes_menu(code_headers, self.transaction_data.iloc[row.Index].dropna().to_string())
-                code = input()
-                if code != 'na':
-                    try:
-                        code = int(code)
-                        if code <= 0 or code > len(code_headers):
-                            print(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
-                                  f'Please enter a number between 1 and {len(code_headers)}')
-                        else:
-                            code = code_headers[code - 1]
-                            self.transaction_data.loc[row.Index, 'code'] = code
-                            show_menu = False
-                    except ValueError:
-                        print(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
-                              f'Please enter a number between 1 and {len(assignations)}')
-                else:
-                    show_menu = False
-        self.save()
+            for row in self.transaction_data[na_idx].itertuples():
+                code_headers = [col_name for col_name, _ in assignations.items()]
+                show_menu: bool = True
+                while show_menu:
+                    print_codes_menu(code_headers, self.transaction_data.iloc[row.Index].dropna().to_string())
+                    code = input()
+                    if code != 'na':
+                        try:
+                            code = int(code)
+                            if code <= 0 or code > len(code_headers):
+                                self.logger.error(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
+                                                  f'Please enter a number between 1 and {len(code_headers)}')
+                            else:
+                                code = code_headers[code - 1]
+                                self.transaction_data.loc[row.Index, 'code'] = code
+                                show_menu = False
+                        except ValueError:
+                            self.logger.error(f'{colorama.Fore.RED}Error: {colorama.Fore.RESET}'
+                                              f'Please enter a number between 1 and {len(assignations)}')
+                    else:
+                        show_menu = False
 
-    def _get_account_specific_codes(self, cashflow: pd.DataFrame, description_column="description") -> List[str]:
-        """
-        This function returns a vector corresponding to all transaction code associated to the description vector given
-        as argument
-
-        args:
-            - description   A vector of transaction description (often reffered to as "object, item, description, etc."
-                            in bank statements). The relations between the descriptions and the codes are contained in
-                            "assignations_<account_name>.csv"
-        """
-        descriptions = cashflow.loc[:, description_column]
-
-        account_assignations_path = self.conf.assignation_file_path
-        if not Path(account_assignations_path).exists():
-            raise FileNotFoundError(f"Assignation file not found at {account_assignations_path}")
-
-        with open(account_assignations_path, 'r') as f:
-            assignations = json.load(f)
-
-        codes = list()
-
-        # for each transaction entry...
-        for index, description in enumerate(descriptions):
-            codes.append("na")
-            found = False
-
-            # for each transaction code in the assignations list...
-            for code, lookup_values in assignations.items():
-
-                # if the assignations are not empty...
-                if len(lookup_values) > 0:
-
-                    # for each lookup value...
-                    for lookup_value in lookup_values:
-
-                        # check if the lookup value is found in the description.
-                        found = description.lower().find(lookup_value.lower()) != -1
-
-                        # if so assign the corresponding code to the trasaction and break
-                        if found:
-                            codes[len(codes) - 1] = code
-                            break
-                if found:
-                    break
-        return codes
+            ans = input(f"Save {self.name}? ([y]/n):\n")
+            if ans in ["", "y", "Y"]:
+                self.save()
 
     def change_transaction_code(self, ix, code):
         self.transaction_data.loc[ix, 'code'] = code
@@ -452,12 +480,8 @@ class Account:
                 )
                 if first_day < planned_date < last_day:
                     planned['date'].append(pd.to_datetime(planned_date))
-                    if amount <= 0:
-                        planned[self.negative_names[0]].append(amount)
-                        planned[self.positive_names[0]].append(0)
-                    elif amount > 0:
-                        planned[self.negative_names[0]].append(0)
-                        planned[self.positive_names[0]].append(amount)
+                    planned[self.negative_names[0]].append(amount * (amount <= 0))
+                    planned[self.positive_names[0]].append(amount * (not (amount <= 0)))
                     planned['description'].append(PREDICTED_BALANCE)
                     planned['code'].append(transactions[2])
 
@@ -465,7 +489,6 @@ class Account:
             year_carry_over = 0
             for ix in range(num_months + 1):
                 amount = transactions[0]
-                planned_day = transactions[1]
                 code = transactions[2]
                 planned_month = (first_day.month + ix) % 12
                 planned_month = 12 if planned_month == 0 else planned_month
@@ -478,12 +501,8 @@ class Account:
                 )
                 if first_day < planned_date < last_day:
                     planned['date'].append(pd.to_datetime(planned_date))
-                    if amount <= 0:
-                        planned[self.negative_names[0]].append(amount)
-                        planned[self.positive_names[0]].append(0)
-                    elif amount > 0:
-                        planned[self.negative_names[0]].append(0)
-                        planned[self.positive_names[0]].append(amount)
+                    planned[self.negative_names[0]].append(amount * (amount <= 0))
+                    planned[self.positive_names[0]].append(amount * (not (amount <= 0)))
                     planned['description'].append(PREDICTED_BALANCE)
                     planned['code'].append(code)
 
@@ -561,4 +580,15 @@ class Account:
                          y=stat,
                          s=f"{data.loc[stat, 'total']: .2f} / {data.loc[stat, 'total']/period_length: .2f}")
 
+    def filter_by_code(self, code: str, period_seed_date: str = "", date_end: str = "") -> pd.DataFrame | None:
+        if period_seed_date == "":
+            filtered_data = deepcopy(self.transaction_data)
+        else:
+            filtered_data, _ = self.get_period_data(period_seed_date=period_seed_date,
+                                                    date_end=date_end)
 
+        if filtered_data is not None:
+            filtered_data = filtered_data[filtered_data['code'] == code]
+            filtered_data = filtered_data if not filtered_data.empty else None
+
+        return filtered_data

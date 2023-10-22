@@ -133,4 +133,4 @@ dmypy.json
 accounting/data/*
 accounting/accounts_configs/*
 images/
-pickle_objects/
+legacy_pickle_objects/
