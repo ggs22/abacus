@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 
 import utils.path_utils as pu
 
-from accounting.Account import Account
+from accounting.Account import Account, PREDICTED_BALANCE
 from accounting.account_list import AccountsList
 
 logging.basicConfig(level=logging.INFO)

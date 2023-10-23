@@ -4,8 +4,9 @@ import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 import pandas as pd
 
+import accounting.forecast_strategies as forecast_strategies
+
 from accounting.Account import Account
-from accounting.prediction_strategies import PredictionStrategy
 
 
 def finalize_plot(plot_func: callable):
@@ -21,11 +22,16 @@ class AccountsList:
 
     def __init__(self, accounts: List[Account]):
         self.accounts = dict()
+        self.strategies = dict()
         self.__acclist__ = list()
         for account in accounts:
             self.accounts[account.name] = account
             self.__acclist__.append(account)
-
+            self.strategies[account.name] = list()
+            if account.conf.forecast_strategies is not None:
+                self.strategies[account.name] += [
+                    getattr(forecast_strategies, strategy)() for strategy in account.conf.forecast_strategies
+                ]
         self.color = cm.get_cmap('tab10')(5)
 
     def __getitem__(self, ix) -> Account:
@@ -90,35 +96,40 @@ class AccountsList:
 
     @finalize_plot
     def plot_predictions(self,
-                         predict_strategy: PredictionStrategy,
                          predicted_days: int = 356,
                          figure_name: str = "",
                          simulation_date: str = "",
                          **kwargs):
         mean_bal = list()
         std_bal = list()
-        for acc in self:
-            predict_strategy.plot_prediction(account=acc,
-                                             predicted_days=predicted_days,
-                                             figure_name=figure_name,
-                                             simulation_date=simulation_date,
-                                             **kwargs)
-            if acc.prediction is not None:
-                pred = acc.prediction.loc[:, ['date', 'balance']].rename(columns={'balance': f'balance_{acc.name}'})
-                mean_bal.append(pred.groupby(by='date').mean())
-                std_bal.append(pred.groupby(by='date').std())
-        total = pd.concat(mean_bal, axis=1)
-        total = total.ffill().dropna()
-        total_std = pd.concat(std_bal, axis=1)
-        total_std = total_std.ffill().dropna()
-        total['balance_total'] = total.sum(axis=1)
-        total_std['balance_std'] = total_std.std(axis=1)
-        plt.plot(total['balance_total'], linestyle="--", label="", c=self.color)
-        plt.fill_between(x=total.index,
-                         y1=total['balance_total']-total_std['balance_std'],
-                         y2=total['balance_total']+total_std['balance_std'],
-                         color=self.color,
-                         alpha=0.5)
+        for account in self:
+            forecast_once = False  # only one forecast will serve to total calculation
+            for strategy in self.strategies[account.name]:
+                strategy.plot_prediction(account=account,
+                                         predicted_days=predicted_days,
+                                         figure_name=figure_name,
+                                         simulation_date=simulation_date,
+                                         **kwargs)
+                if account.prediction is not None and not forecast_once:
+                    pred = account.prediction.loc[:, ['date', 'balance']].rename(columns={'balance': f'balance_{account.name}'})
+                    mean_bal.append(pred.groupby(by='date').mean())
+                    std_bal.append(pred.groupby(by='date').std())
+                    forecast_once = True
+
+        show_total = kwargs.pop('show_total', True)
+        if show_total:
+            total = pd.concat(mean_bal, axis=1)
+            total = total.ffill().dropna()
+            total_std = pd.concat(std_bal, axis=1)
+            total_std = total_std.ffill().dropna()
+            total['balance_total'] = total.sum(axis=1)
+            total_std['balance_std'] = total_std.std(axis=1)
+            plt.plot(total['balance_total'], linestyle="--", label="", c=self.color)
+            plt.fill_between(x=total.index,
+                             y1=total['balance_total']-total_std['balance_std'],
+                             y2=total['balance_total']+total_std['balance_std'],
+                             color=self.color,
+                             alpha=0.5)
 
     def barplot(self, period_seed_date: str, date_end: str = ""):
         data_df = list()

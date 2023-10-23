@@ -1,10 +1,6 @@
 import matplotlib.pyplot as plt
 
 from accounting import accounts
-from accounting.prediction_strategies import (
-    PredictionByMeanStrategy, DateBasedMonteCarloStrategy
-)
-
 
 if __name__ == "__main__":
     "tests"
@@ -22,19 +18,18 @@ if __name__ == "__main__":
     accounts['DesjardinsOP'].ignored_index = [1581, 1586, 1587, 1588, 1673, 1674, 1675, 1676, 1681, 1682]
     accounts['DesjardinsMC'].ignored_index = [454, 455, 487, 488, 491, 492]
 
-    # TODO - account-specific strategies (List[PredictionStrategy])
-    # TODO - planned transaction & mean Strategy to implement
-    for strategy in [
-        PredictionByMeanStrategy,
-        DateBasedMonteCarloStrategy,
-    ]:
-        for sim_date in ['2023-09-30', ""]:
-            accounts.plot_predictions(predict_strategy=strategy(),
-                                      predicted_days=365*3,
-                                      simulation_date=sim_date,
-                                      mc_iterations=50,
-                                      figure_name=fig_name,
-                                      force_new=False)
+    # TODO: get_planned_transaction should planned for payments
+    # TODO: predictions with interests
+    # TODO: export data and re-import from csv (because of header=0 some first lines are missing),
+    #  then lookup for duplicate lines and re-assign code from previous exports
+
+    for sim_date in ['']:
+        accounts.plot_predictions(predicted_days=365*3,
+                                  simulation_date=sim_date,
+                                  mc_iterations=5,
+                                  figure_name=fig_name,
+                                  force_new=True,
+                                  show_total=False)
     for year in [
         '2023',
         '2022',

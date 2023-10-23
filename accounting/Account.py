@@ -6,7 +6,7 @@ import re
 import logging
 
 from copy import deepcopy
-from typing import List, Tuple, Callable
+from typing import List, Tuple
 from pathlib import Path
 
 import colorama
@@ -457,7 +457,7 @@ class Account:
             cleared_period = None
         return cleared_period
 
-    def get_planned_transactions(self, start_date: str, predicted_days: int = 365) -> pd.DataFrame:
+    def get_planned_transactions(self, start_date: str, predicted_days: int = 365) -> pd.DataFrame | None:
         first_day = datetime.date.fromisoformat(start_date)
         last_day = first_day + datetime.timedelta(days=predicted_days)
 
@@ -534,11 +534,14 @@ class Account:
         for key in keys_to_pop:
             planned.pop(key)
 
-        planned = pd.DataFrame(planned)
-        if 'date' in planned.columns:
-            planned.sort_values(by='date', ascending=True, inplace=True, ignore_index=True)
-            planned.reset_index(drop=True, inplace=True)
-
+        if len(planned) > 0:
+            planned = pd.DataFrame(planned)
+            if 'date' in planned.columns:
+                planned.sort_values(by='date', ascending=True, inplace=True, ignore_index=True)
+                planned.reset_index(drop=True, inplace=True)
+        else:
+            self.logger.info(f"No transactions planned for {self.name}")
+            planned = None
         return planned
 
     def plot(self, figure_name: str = None):

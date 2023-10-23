@@ -1,23 +1,21 @@
+import datetime
 import logging
 import pickle
 import random
 from copy import deepcopy
-
-import datetime
 from pathlib import Path
 from typing import Iterable
 
 import colorama
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
-
+from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from accounting.Account import Account, PREDICTED_BALANCE
+from accounting import Account, PREDICTED_BALANCE
 
 
-class PredictionStrategy:
+class ForecastStrategy:
 
     def get_serialized_prediction_path(self, account: Account, simulation_date: str) -> Path:
         pred_path = Path(account.conf.serialized_objects_dir)
@@ -31,12 +29,12 @@ class PredictionStrategy:
         return pred_path
 
     @property
-    def logger_name(self) -> str:
-        return f"PredctionStrategyLogger"
+    def logger(self) -> logging.Logger:
+        return logging.getLogger(f"{self.__class__.__name__}")
 
     @staticmethod
     def _append_amount(account: Account, pred: dict, amount: float | Iterable[float]) -> None:
-        if isinstance(amount, float):
+        if not isinstance(amount, Iterable):
             amount = [amount]
         for _amount in amount:
             neg = _amount <= 0
@@ -77,24 +75,25 @@ class PredictionStrategy:
                 kwargs['sampling_period'], _ = account.get_period_data(period_start_date.strftime('%Y-%m-%d'),
                                                                        period_end_date.strftime('%Y-%m-%d'))
 
-                pred = predict_func(**kwargs)
+                pred: pd.DataFrame | None = predict_func(**kwargs)
 
-                current_balance = account.current_balance
+                if pred is not None:
+                    current_balance = account.current_balance
 
-                pred['date'] = pd.to_datetime(pred['date'].apply(lambda i: period_end_date + datetime.timedelta(days=i)))
+                    pred['date'] = pd.to_datetime(pred['date'].apply(lambda i: period_end_date + datetime.timedelta(days=i)))
 
-                pred.sort_values(by=['description', 'date'], ascending=True, ignore_index=True, inplace=True)
-                pred = pred.replace(np.nan, 0)
-                pred['balance'] = pred.groupby(by='description').cumsum(numeric_only=True).sum(axis=1) + current_balance
+                    pred.sort_values(by=['description', 'date'], ascending=True, ignore_index=True, inplace=True)
+                    pred = pred.replace(np.nan, 0)
+                    pred['balance'] = pred.groupby(by='description').cumsum(numeric_only=True).sum(axis=1) + current_balance
 
-                pred.reset_index(drop=True, inplace=True)
-                with open(self.get_serialized_prediction_path(account, simulation_date), 'wb') as pred_file:
-                    pickle.dump(pred, pred_file)
+                    pred.reset_index(drop=True, inplace=True)
+                    with open(self.get_serialized_prediction_path(account, simulation_date), 'wb') as pred_file:
+                        pickle.dump(pred, pred_file)
             else:
-                logging.getLogger(self.logger_name)
+
                 with open(self.get_serialized_prediction_path(account, simulation_date), 'rb') as pred_file:
                     pred = pickle.load(pred_file)
-                logging.info(f"loaded {self.get_serialized_prediction_path(account, simulation_date)}")
+                self.logger.info(f"loaded {self.get_serialized_prediction_path(account, simulation_date)}")
         else:
 
             print(colorama.Fore.YELLOW,
@@ -121,6 +120,8 @@ class PredictionStrategy:
                         simulation_date: str = "",
                         **kwargs) -> None:
 
+            if simulation_date == "":
+                simulation_date = account.most_recent_date.item().strftime("%Y-%m-%d")
             pred: pd.DataFrame | None = self.predict(account=account,
                                                      predicted_days=predicted_days,
                                                      simulation_date=simulation_date,
@@ -141,7 +142,7 @@ class PredictionStrategy:
                                  alpha=0.3)
 
 
-class PredictionByMeanStrategy(PredictionStrategy):
+class ForecastByMeanStrategy(ForecastStrategy):
 
     def predict(self,
                 predicted_days: int,
@@ -183,7 +184,64 @@ class PredictionByMeanStrategy(PredictionStrategy):
         return pred
 
 
-class DateBasedMonteCarloStrategy(PredictionStrategy):
+class PlannedTransactionsStrategy(ForecastStrategy):
+
+    def predict(self,
+                predicted_days: int,
+                account: Account,
+                average_over: int = 365,
+                simulation_date: str = "",
+                **kwargs) -> pd.DataFrame | None:
+
+        planned_transations: pd.DataFrame | None = account.get_planned_transactions(start_date=simulation_date,
+                                                                                    predicted_days=predicted_days)
+        if planned_transations is not None:
+            planned_codes = planned_transations.code.unique()
+        else:
+            planned_codes = list()
+
+        def _predict(predicted_days: int,
+                     stats: pd.DataFrame,
+                     **kwargs) -> pd.DataFrame | None:
+
+            pred_l = {col_name: list() for col_name in account.columns_names}
+            with tqdm(total=predicted_days,
+                      desc=f"{self.__class__.__name__} iterating {account.name}") as pbar:
+                    daily_expense = stats[~stats.index.isin(planned_codes)]['daily_mean'].mean()
+
+                    for days_ix in range(predicted_days):
+                        amount = daily_expense if planned_transations is not None else 0
+                        pred_l['date'].append(days_ix + 1)
+                        pred_l['description'].append(PREDICTED_BALANCE)
+                        pred_l['code'].append("other")
+                        self._append_amount(account=account, pred=pred_l, amount=amount)
+                        pbar.update(1)
+
+            self._prune_dict(pred_l)
+            pred_l = pd.DataFrame(pred_l)
+
+            return pred_l
+
+        kwargs['strategy_name'] = self.__class__.__name__
+        pred: pd.DataFrame = self._prediction_wraper(account=account,
+                                                     predicted_days=predicted_days,
+                                                     predict_func=_predict,
+                                                     average_over=average_over,
+                                                     simulation_date=simulation_date,
+                                                     **kwargs)
+
+        if planned_transations is not None and account.status != "CLOSED":
+            pred = pd.concat([planned_transations, pred], ignore_index=True)
+            pred.sort_values(by='date', inplace=True)
+            pred.reset_index(drop=True, inplace=True)
+            pred['balance'] = (pred.loc[:, [account.positive_names[0], account.negative_names[0]]]).sum(axis=1).cumsum() + account.current_balance
+
+        account.prediction = pred
+
+        return pred
+
+
+class DateBasedMonteCarloStrategy(ForecastStrategy):
 
     def predict(self,
                 account: Account,
