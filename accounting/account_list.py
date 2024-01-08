@@ -1,3 +1,4 @@
+from copy import deepcopy
 from typing import List, Dict
 
 import matplotlib.pyplot as plt
@@ -41,10 +42,10 @@ class AccountsList:
             item = self.accounts[ix]
         return item
 
-    @property
-    def balance_columns(self) -> pd.DataFrame:
+    def _sum_balances_columns(self, accounts: List[Account] | None = None) -> pd.DataFrame:
+        accounts = accounts if accounts is not None else self
         balances = list()
-        for account in self:
+        for account in accounts:
             balance = account.balance_column
             balance = balance.groupby(level=0).last()
             balances.append(balance)
@@ -62,6 +63,35 @@ class AccountsList:
         total['balance_total'] = total.sum(axis=1)
 
         return total
+
+    @property
+    def balance_column(self) -> pd.DataFrame:
+        return self._sum_balances_columns()
+
+    def get_balance_columns_sum(self, accounts: List[Account]) -> pd.DataFrame:
+        return self._sum_balances_columns(accounts)
+
+    def period_stats(self, date: str, date_end: str = "", **kwargs) -> pd.DataFrame:
+        stats_list = list()
+        for account in self:
+            swap: bool = account.use_legacy_stats
+            account.use_legacy_stats = False
+            stats_list.append(account.period_stats(date=date, date_end=date_end))
+            account.use_legacy_stats = swap
+
+        stats = pd.DataFrame(columns=stats_list[0].columns)
+        df1_reset = deepcopy(stats)
+        df1_reset['index'] = stats.index
+        for ix in range(0, len(stats_list)):
+            if stats_list[ix] is not None:
+                df2_reset = deepcopy(stats_list[ix])
+                df2_reset['index'] = stats_list[ix].index
+                stats = df1_reset.merge(df2_reset, on=['index', *stats.columns], how='outer').set_index('index')
+                # TODO make sure that this reduction is valid
+                stats = stats.groupby(stats.index).mean()
+                df1_reset = stats
+
+        return stats
 
     def get_balance_prediction(self, predicted_days: int = 365, **kwargs) -> pd.DataFrame:
         preds: List[pd.DataFrame] = list()
@@ -90,9 +120,24 @@ class AccountsList:
 
         for account in self:
             account.plot(figure_name=fig_name)
-        total = self.balance_columns
+        total = self.balance_column
 
         plt.plot(total['balance_total'], label="total balance", c=self.color)
+
+    @finalize_plot
+    def plot_cumulative_balances(self, accounts: List[Account], fig_name: str = "") -> None:
+
+        if fig_name == "":
+            fig_name = "Accounts plot"
+
+        total = self.get_balance_columns_sum(accounts)
+
+        label = "summed balance"
+        for account in accounts:
+            label += f" {account.name}"
+
+        plt.figure(num=fig_name)
+        plt.plot(total['balance_total'], label=label)
 
     @finalize_plot
     def plot_predictions(self,
@@ -171,3 +216,7 @@ class AccountsList:
             if data is not None:
                 filtered_data[account.name] = data
         return filtered_data
+
+    def export(self) -> None:
+        for account in self:
+            account.export()

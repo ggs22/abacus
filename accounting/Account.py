@@ -30,6 +30,7 @@ matplotlib.use('TkAgg')
 MC_SAMPLING = 'mc_sampling'
 PREDICTED_BALANCE = 'predicted_balance'
 
+AccountStats = pd.DataFrame
 
 def _mad(x: pd.Series) -> pd.Series:
     med = x.median()
@@ -99,11 +100,14 @@ class Account:
         self.name = self.conf.name
         self.initial_balance = self.conf.initial_balance
         self.status = self.conf.status
+
         self.color = cm.get_cmap(self.conf.cm_name)(self.conf.cm_index)
 
         self.ignored_index: List[int] = None
 
         self.prediction = None
+        self.legacy_account = None
+        self.use_legacy_stats = False
 
         self.logger = logging.getLogger(f"{self.__class__.__name__} - {self.name}")
 
@@ -161,7 +165,7 @@ class Account:
             balance_column = deepcopy((self.transaction_data[self.numerical_names] * self.numerical_signs))
             balance_column = balance_column.cumsum().sum(axis=1)
         else:
-            balance_column = deepcopy(self.transaction_data['balance'])
+            balance_column = deepcopy(self.transaction_data[self.conf.balance_column[0]])
             balance_column.columns = None
 
         balance_column += self.initial_balance
@@ -175,7 +179,9 @@ class Account:
 
     @property
     def has_balance_column(self) -> bool:
-        return 'balance' in self.transaction_data.columns
+        balance_in_conf = self.conf.balance_column is not None
+        balance_in_headers = False if not balance_in_conf else self.conf.balance_column[0] in self.transaction_data.columns
+        return balance_in_conf and balance_in_headers
 
     @property
     def numerical_names(self) -> List[str]:
@@ -226,7 +232,10 @@ class Account:
 
                 cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
                                         encoding=self.conf.encoding,
-                                        names=self.conf.columns_names)
+                                        names=self.conf.columns_names,
+                                        sep=self.conf.separator,
+                                        skip_blank_lines=True,
+                                        header=0 if self.conf.has_header_row else None)
 
                 # Check if there is a filter to apply on the rows:
                 if self.conf.rows_selection is not None:
@@ -254,8 +263,11 @@ class Account:
                 if self.transaction_data is not None:
                     cash_flow = pd.concat([self.transaction_data, cash_flow], ignore_index=True)
 
-                cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')], inplace=True)
-                cash_flow.sort_values(by=list(self.conf.sorting_order), ascending=True, inplace=True)
+                cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')],
+                                          inplace=True)
+                cash_flow.sort_values(by=list(self.conf.sorting_order),
+                                      ascending=list(self.conf.sorting_ascendence),
+                                      inplace=True)
                 cash_flow.reset_index(drop=True, inplace=True)
 
                 self.transaction_data = cash_flow
@@ -309,7 +321,7 @@ class Account:
 
     def get_balance(self) -> pd.Series:
         if self.has_balance_column:
-            balance = self.transaction_data['balance']
+            balance = self.transaction_data[self.conf.balance_column[0]]
         else:
             balance = (self.transaction_data[self.numerical_names] * self.numerical_signs).cumsum().sum(axis=1)
             balance += self.conf.initial_balance if 'initial_balance' in self.conf else balance
@@ -330,49 +342,55 @@ class Account:
 
         return period_data, days
 
-    def period_stats(self, date: str, date_end: str = "", **kwargs) -> pd.DataFrame | None:
-        period_data, delta_days = self.get_period_data(date, date_end)
+    def period_stats(self, date: str, date_end: str = "", **kwargs) -> AccountStats | None:
 
-        if period_data is not None:
-
-            if self.ignored_index is not None:
-                period_data = period_data[~period_data.index.isin(self.ignored_index)]
-
-            num_cols = [col for col, _ in self.conf.numerical_columns]
-            signs = [sign for _, sign in self.conf.numerical_columns]
-
-            period_data[num_cols] *= signs
-            period_data['merged'] = period_data[num_cols].sum(axis=1)
-            period_data.drop(columns=num_cols, inplace=True)
-
-            t_counts = period_data[['merged', 'code']].groupby(by='code').count().merged
-            t_daily_prob = (t_counts / delta_days)
-
-            t_sum = period_data[['merged', 'code']].groupby(by='code').sum(numeric_only=True).merged
-            # t_ave = period_data[['merged', 'code']].groupby(by='code').mean(numeric_only=True).merged
-            t_ave = t_sum/delta_days
-            t_med = period_data[['merged', 'code']].groupby(by='code').median(numeric_only=True).merged
-
-            t_daily_std = dict()
-            for code in t_ave.index:
-                _d = period_data[period_data['code'] == code]['merged'].to_numpy()
-                t_daily_std[code] = np.sqrt(np.sum(np.power(_d - t_ave[code].item(), 2))/delta_days)
-            t_daily_std = pd.Series(t_daily_std)
-
-            t_mad = period_data[['merged', 'code']].groupby(by='code')['merged'].apply(_mad)
-            t_std = period_data[['merged', 'code']].groupby(by='code').std(numeric_only=True).merged
-
-            period_stats = pd.DataFrame({'sums': t_sum,
-                                         'daily_mean': t_ave,
-                                         'transac_median': t_med,
-                                         'daily_std': t_daily_std,
-                                         'mad': t_mad,
-                                         'std': t_std,
-                                         'daily_prob': t_daily_prob,
-                                         'count': t_counts},
-                                        index=t_std.index).replace(np.nan, 0)
+        if self.legacy_account is not None and self.use_legacy_stats:
+            # TODO potential for endless recursion, re-think this
+            period_stats = self.legacy_account.period_stats(date, date_end, **kwargs)
         else:
-            period_stats = None
+            period_data, delta_days = self.get_period_data(date, date_end)
+
+            if period_data is not None:
+
+                if self.ignored_index is not None:
+                    period_data = period_data[~period_data.index.isin(self.ignored_index)]
+
+                num_cols = [col for col, _ in self.conf.numerical_columns]
+                signs = [sign for _, sign in self.conf.numerical_columns]
+
+                period_data[num_cols] *= signs
+                period_data['merged'] = period_data[num_cols].sum(axis=1)
+                period_data.drop(columns=num_cols, inplace=True)
+
+                t_counts = period_data[['merged', 'code']].groupby(by='code').count().merged
+                t_daily_prob = (t_counts / delta_days)
+
+                t_sum = period_data[['merged', 'code']].groupby(by='code').sum(numeric_only=True).merged
+                t_ave = period_data[['merged', 'code']].groupby(by='code').mean(numeric_only=True).merged
+                t_daily_ave = t_sum/delta_days
+                t_med = period_data[['merged', 'code']].groupby(by='code').median(numeric_only=True).merged
+
+                t_daily_std = dict()
+                for code in t_daily_ave.index:
+                    _d = period_data[period_data['code'] == code]['merged'].to_numpy()
+                    t_daily_std[code] = np.sqrt(np.sum(np.power(_d - t_daily_ave[code].item(), 2))/delta_days)
+                t_daily_std = pd.Series(t_daily_std)
+
+                t_mad = period_data[['merged', 'code']].groupby(by='code')['merged'].apply(_mad)
+                t_std = period_data[['merged', 'code']].groupby(by='code').std(numeric_only=True).merged
+
+                period_stats = pd.DataFrame({'sums': t_sum,
+                                             'daily_mean': t_daily_ave,
+                                             'mean': t_ave,
+                                             'transac_median': t_med,
+                                             'daily_std': t_daily_std,
+                                             'mad': t_mad,
+                                             'std': t_std,
+                                             'daily_prob': t_daily_prob,
+                                             'count': t_counts},
+                                            index=t_std.index).replace(np.nan, 0)
+            else:
+                period_stats = None
 
         return period_stats
 
@@ -406,6 +424,7 @@ class Account:
             self.transaction_data.to_csv(transaction_export, sep="\t")
         with open(export_dir.joinpath(f"processed_files_{self.name}.pkl"), 'wb') as processed_files_export:
             pickle.dump(self.processed_data_files, processed_files_export)
+        self.logger.info(f"exported transaction data & processed files list in {str(export_dir)}")
 
     def interactive_codes_update(self) -> None:
         na_idx = self.transaction_data.code == 'na'

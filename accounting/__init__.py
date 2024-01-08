@@ -4,7 +4,7 @@ from omegaconf import OmegaConf
 
 import utils.path_utils as pu
 
-from accounting.Account import Account, PREDICTED_BALANCE
+from accounting.Account import Account, AccountStats, PREDICTED_BALANCE
 from accounting.account_list import AccountsList
 
 logging.basicConfig(level=logging.INFO)
@@ -12,7 +12,7 @@ logging.basicConfig(level=logging.INFO)
 accounts = list()
 desjardins_accounts = list()
 
-# Dynamically load NewRefactoredAccount objects int the accounting module from the corresponding yaml files
+# Dynamically load Account objects int the accounting module from the corresponding yaml files
 config_files = [file for file in pu.accounts_dir.glob('*.yaml')]
 config_files.sort()
 for yaml_file in config_files:

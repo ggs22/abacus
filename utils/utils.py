@@ -78,7 +78,7 @@ def calculate_pay(days: int, clear=True):
     """
 
     daily_hours = 7.5
-    hourly_rate = (85000/1950)
+    hourly_rate = (96000/1950)
     rate = 0.671 if clear else 1
     return round(days * daily_hours * hourly_rate * rate, 2)
 
@@ -99,7 +99,7 @@ pickle_dir = os.path.join(root_dir, 'pickle_objects')
 
 
 if __name__ == "__main__":
-    sdate = datetime.date(year=2023, month=1, day=2)
-    edate = datetime.date(year=2024, month=12, day=31)
+    sdate = datetime.date(year=2023, month=12, day=1)
+    edate = datetime.date(year=2025, month=12, day=31)
 
     print_lti_pays(start_date=sdate, end_date=edate)

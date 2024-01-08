@@ -4,7 +4,7 @@ import pickle
 import random
 from copy import deepcopy
 from pathlib import Path
-from typing import Iterable
+from typing import Iterable, List, Any, Dict
 
 import colorama
 import numpy as np
@@ -12,10 +12,13 @@ import pandas as pd
 from matplotlib import pyplot as plt
 from tqdm import tqdm
 
-from accounting import Account, PREDICTED_BALANCE
+from accounting import Account, AccountStats, PREDICTED_BALANCE
 
 
 class ForecastStrategy:
+
+    def __call__(self, *args, **kwargs):
+        return self.predict(*args, **kwargs)
 
     def get_serialized_prediction_path(self, account: Account, simulation_date: str) -> Path:
         pred_path = Path(account.conf.serialized_objects_dir)
@@ -26,6 +29,7 @@ class ForecastStrategy:
             file_name += f"{simulation_date}"
         file_name += "_prediction.pkl"
         pred_path = pred_path.joinpath(file_name)
+        pred_path.parent.mkdir(exist_ok=True, parents=True)
         return pred_path
 
     @property
@@ -44,6 +48,7 @@ class ForecastStrategy:
     def _prediction_wraper(self,
                            account: Account,
                            predict_func: callable,
+                           stats: AccountStats | None = None,
                            predicted_days: int = 365,
                            average_over: int = 365,
                            simulation_date: str = "",
@@ -66,10 +71,12 @@ class ForecastStrategy:
                 period_end_date = past_data.tail(1).date.array.date[0]
                 period_start_date = period_end_date - datetime.timedelta(days=average_over)
 
-                stats = account.period_stats(period_start_date.strftime('%Y-%m-%d'),
-                                             period_end_date.strftime('%Y-%m-%d'),
-                                             **kwargs)
-                kwargs['stats'] = stats
+                if stats is None:
+                    stats = account.period_stats(period_start_date.strftime('%Y-%m-%d'),
+                                                 period_end_date.strftime('%Y-%m-%d'),
+                                                 **kwargs)
+                    kwargs['stats'] = stats
+
                 kwargs['predicted_days'] = predicted_days
                 kwargs['end_date'] = period_end_date
                 kwargs['sampling_period'], _ = account.get_period_data(period_start_date.strftime('%Y-%m-%d'),
@@ -77,7 +84,7 @@ class ForecastStrategy:
 
                 pred: pd.DataFrame | None = predict_func(**kwargs)
 
-                if pred is not None:
+                if pred is not None and pred.shape[0] > 0:
                     current_balance = account.current_balance
 
                     pred['date'] = pd.to_datetime(pred['date'].apply(lambda i: period_end_date + datetime.timedelta(days=i)))
@@ -286,6 +293,81 @@ class DateBasedMonteCarloStrategy(ForecastStrategy):
                                        average_over=average_over,
                                        simulation_date=simulation_date,
                                        **kwargs)
+        account.prediction = pred
+
+        return pred
+
+
+class MonteCarloStrategy(ForecastStrategy):
+    def predict(self,
+                account: Account,
+                predicted_days: int,
+                average_over: int = 365,
+                simulation_date: str = "",
+                **kwargs) -> pd.DataFrame:
+
+        planned_transactions: pd.DataFrame | None = account.get_planned_transactions(start_date=simulation_date,
+                                                                                    predicted_days=predicted_days)
+        if planned_transactions is not None:
+            planned_codes = list(planned_transactions.code.unique())
+        else:
+            planned_codes = list()
+        planned_codes.extend(['na', 'internal_cashflow'])
+
+        def _predict(stats: pd.DataFrame,
+                     mc_iterations: int = 100,
+                     **kwargs):
+
+            pred_l: Dict[str, List[Any]] = {col_name: list() for col_name in account.columns_names}
+            pred_l['mc_iteration'] = list()
+
+            with tqdm(total=predicted_days * mc_iterations,
+                      desc=f"{self.__class__.__name__} iterating {account.name}") as pbar:
+                for mc_iteration in range(mc_iterations):
+                    for days_ix, _ in enumerate(range(predicted_days)):
+                        for unplanned_index in stats[~stats.index.isin(planned_codes)].index:
+                            dice = random.random() <= stats.loc[unplanned_index]['daily_prob']
+                            if not dice:
+                                continue
+
+                            amount = random.gauss(mu=stats.loc[unplanned_index]['mean'],
+                                                  sigma=stats.loc[unplanned_index]['std'])
+                            amount = amount
+                            if amount != 0:
+                                pred_l['date'].append(days_ix + 1)
+                                pred_l['description'].append(f"{PREDICTED_BALANCE}_{unplanned_index}")
+                                pred_l['code'].append("other")
+                                pred_l['mc_iteration'].append(mc_iteration)
+                                self._append_amount(account=account, pred=pred_l, amount=amount)
+                        pbar.update(1)
+
+                self._prune_dict(pred_l)
+
+                pred_l: pd.DataFrame = pd.DataFrame(pred_l)
+            return pred_l
+
+        kwargs['strategy_name'] = self.__class__.__name__
+        pred = self._prediction_wraper(account=account,
+                                       predicted_days=predicted_days,
+                                       predict_func=_predict,
+                                       average_over=average_over,
+                                       simulation_date=simulation_date,
+                                       **kwargs)
+
+        if planned_transactions is not None and account.status != "CLOSED":
+            mc_iterations = kwargs.pop('mc_iterations', 0)
+            planned_transactions_list = list()
+            for i in range(0, mc_iterations):
+                planned_transactions['mc_iteration'] = i
+                planned_transactions_list.append(deepcopy(planned_transactions))
+            pred = pd.concat([pred, *planned_transactions_list], axis=0)
+            pred.sort_values(by=['mc_iteration', 'date'], inplace=True)
+            pred.reset_index(drop=True, inplace=True)
+            cols = ['mc_iteration', account.positive_names[0], account.negative_names[0]]
+            pred['balance'] = (pred.loc[:, cols].groupby(by='mc_iteration').cumsum().sum(axis=1) +
+                               account.current_balance)
+            del cols
+
         account.prediction = pred
 
         return pred
