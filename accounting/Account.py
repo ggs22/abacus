@@ -2,7 +2,6 @@ import datetime
 import json
 import os
 import pickle
-import re
 import logging
 
 from copy import deepcopy
@@ -95,13 +94,14 @@ class Account:
     def __init__(self, conf: DictConfig):
 
         self.conf = conf
-        self.validate_config()
 
         self.name = self.conf.name
+
+        self.validate_config()
+
+        self.account_dir = conf.account_dir
         self.initial_balance = self.conf.initial_balance
         self.status = self.conf.status
-
-        self.color = cm.get_cmap(self.conf.cm_name)(self.conf.cm_index)
 
         self.ignored_index: List[int] = None
 
@@ -116,10 +116,7 @@ class Account:
         else:
             self.balance_sign = 1
 
-        with open(self.conf.assignation_file_path, 'r') as f:
-            self.common_assignations = json.load(fp=f)
-
-        with open(self.conf.planned_transactions_path, 'r') as f:
+        with open(Path(self.account_dir).joinpath("planned_transactions.json"), 'r') as f:
             self.planned_transactions = json.load(fp=f)
 
         # If serialized objects exist, load them.
@@ -139,6 +136,15 @@ class Account:
         # load raw data
         self._import_csv_files()
 
+    def __repr__(self):
+        pres = f"{self.name}\n"
+        pres += f"{len(self.transaction_data)} entries\n"
+        pres += f"last entry: {self.most_recent_date}.\n"
+        pres += f"balance: {self.current_balance:.2f}$\n"
+        pres += f"type: {self.conf.type}\n"
+        pres += f"status: {self.conf.status}\n"
+        return pres
+
     def __getstate__(self):
         return {"processed_data_files": self.processed_data_files,
                 "transaction_data": self.transaction_data}
@@ -157,7 +163,7 @@ class Account:
 
     @property
     def serialized_self_path(self) -> Path:
-        return Path(self.conf.serialized_objects_dir).joinpath(f"{self.name}.pkl")
+        return Path(self.account_dir).joinpath("pickle_objects", f"{self.name}.pkl")
 
     @property
     def balance_column(self) -> pd.DataFrame:
@@ -220,11 +226,9 @@ class Account:
             self.logger.error(f"Couldn't remove {str(csv_file)} from {self.name} records!:\n{e}")
 
     def _import_csv_files(self) -> None:
-        pattern = re.compile(pattern=r"(conciliation_)?\d{4}([_-]\d{2})?([_-]\d{2})?.csv")
         csv_records_files = list()
-        for file in Path(pu.accounting_data_dir).joinpath(self.conf.raw_files_dir).glob('*.csv'):
-            if pattern.match(file.name):
-                csv_records_files.append(file)
+        for file in Path(self.account_dir).joinpath("csv_data").glob('*.csv'):
+            csv_records_files.append(file)
         for csv_file in csv_records_files:
             file_hash = _get_md5(csv_file.name)
             if file_hash not in self.processed_data_files:
@@ -285,7 +289,7 @@ class Account:
         """
         descriptions = cashflow.loc[:, description_column]
 
-        account_assignations_path = self.conf.assignation_file_path
+        account_assignations_path = Path(self.account_dir).joinpath("assignations.json").resolve()
         if not Path(account_assignations_path).exists():
             raise FileNotFoundError(f"Assignation file not found at {account_assignations_path}")
 
@@ -396,7 +400,7 @@ class Account:
 
     def validate_config(self):
 
-        suffix = f"In the yaml configuration file for this Account object {self}, "
+        suffix = f"In the yaml configuration file for the Account, "
 
         # check that all listed numerical columns are listed in the columns
         for numerical_col in self.conf.numerical_columns:
@@ -418,7 +422,7 @@ class Account:
             logger.info(f"Saved to {str(destination)}")
 
     def export(self):
-        export_dir = pu.accounting_data_dir.joinpath('exports', self.name)
+        export_dir = Path(self.account_dir).joinpath('exports')
         export_dir.mkdir(parents=True, exist_ok=True)
         with open(export_dir.joinpath(f"transaction_data_{self.name}.csv"), 'w') as transaction_export:
             self.transaction_data.to_csv(transaction_export, sep="\t")
@@ -430,7 +434,7 @@ class Account:
         na_idx = self.transaction_data.code == 'na'
 
         if sum(na_idx) > 0:
-            account_assignations_path = self.conf.assignation_file_path
+            account_assignations_path = Path(self.account_dir).joinpath("assignations.json").resolve()
             if not Path(account_assignations_path).exists():
                 raise FileNotFoundError(f"Assignation file not found at {account_assignations_path} "
                                         f"for account {self.name}")
@@ -563,11 +567,11 @@ class Account:
             planned = None
         return planned
 
-    def plot(self, figure_name: str = None):
+    def plot(self, figure_name: str = None, c: str | None = None):
         plt.figure(num=figure_name)
-        plt.plot(self.balance_column, label=self.name, c=self.color)
+        plt.plot(self.balance_column, label=self.name, c=c)
 
-    def histplot(self, period_seed_date: str, date_end: str = ""):
+    def histplot(self, period_seed_date: str, date_end: str = "", c: str | None = None):
         data, _ = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
         if data is not None:
             plt.figure(f"Histplot {self.name} - {period_seed_date}" + f" {date_end}" * (date_end != ""))
@@ -577,7 +581,7 @@ class Account:
                 cols += [col]
                 signs += [sign]
             data['merged'] = (data.loc[:, cols] * signs).sum(axis=1)
-            sns.histplot(data=data, x='merged', log_scale=(False, False), color=self.color)
+            sns.histplot(data=data, x='merged', log_scale=(False, False), color=c)
             plt.title(f"{self.name}\n{period_seed_date}" + f" - {date_end}" * (date_end != ""))
 
     def barplot(self, period_seed_date: str, date_end: str = ""):
@@ -611,6 +615,19 @@ class Account:
 
         if filtered_data is not None:
             filtered_data = filtered_data[filtered_data['code'] == code]
+            filtered_data = filtered_data if not filtered_data.empty else None
+
+        return filtered_data
+
+    def filter_by_description(self, description: str, period_seed_date: str = "", date_end: str = "") -> pd.DataFrame | None:
+        if period_seed_date == "":
+            filtered_data = deepcopy(self.transaction_data)
+        else:
+            filtered_data, _ = self.get_period_data(period_seed_date=period_seed_date,
+                                                    date_end=date_end)
+
+        if filtered_data is not None:
+            filtered_data = filtered_data[filtered_data["description"].str.contains(description)]
             filtered_data = filtered_data if not filtered_data.empty else None
 
         return filtered_data

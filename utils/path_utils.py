@@ -28,20 +28,10 @@ def accounting_dir() -> Path:
 
 
 @ensure_dir_exists
-def accounting_data_dir() -> Path:
-    return accounting_dir.joinpath('data')
-
-
-@ensure_dir_exists
 def accounts_dir() -> Path:
-    return accounting_dir.joinpath('accounts_configs')
-
-
-@ensure_dir_exists
-def pickle_objects_dir() -> Path:
-    return root_dir.joinpath('pickle_objects')
+    return accounting_dir.joinpath('accounts')
 
 
 @validate_path_exists
 def common_assignations_path() -> Path:
-    return accounting_data_dir.joinpath('common_assignation.json')
+    return accounts_dir.joinpath('common_assignation.json')

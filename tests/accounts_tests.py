@@ -1,23 +1,8 @@
 import matplotlib.pyplot as plt
-import pandas as pd
 
-from accounting import accounts
+from accounting import accounts, Account, AccountsList
 
 if __name__ == "__main__":
-
-    old_dejardins_op = pd.read_csv(
-        r"/home/ggsanchez/repos/abacus/accounting/data/exports/DesjardinsOP/transaction_data_DesjardinsOP.csv",
-        sep='\t')
-    old_dejardins_op['date'] = pd.to_datetime(old_dejardins_op['date'])
-    desjardins_op = accounts['DesjardinsOP'].transaction_data
-
-    name = accounts['DesjardinsOP'].columns_names[(accounts['DesjardinsOP'].columns_names != 'date') &
-                                                  (accounts['DesjardinsOP'].columns_names != 'code') &
-                                                  (accounts['DesjardinsOP'].columns_names != 'branch') &
-                                                  (accounts['DesjardinsOP'].columns_names != 'description')]
-    for ix, row in accounts['DesjardinsOP'].filter_by_code(code='na').iterrows():
-        idx = (old_dejardins_op[name] == row[name]).all(axis=1)
-        row['code'] = old_dejardins_op.loc[idx, 'code'].values[0]
 
     fig_name = "All accounts"
     # for account in accounts:
@@ -43,12 +28,12 @@ if __name__ == "__main__":
     accounts['NationalBankOP'].use_legacy_stats = True
     accounts['NationalBankMC'].use_legacy_stats = False
 
-    for sim_date in ['']:
-        accounts.plot_predictions(predicted_days=182,
+    for sim_date in ['2024-01-08', '2024-01-27', ""]:
+        accounts.plot_predictions(predicted_days=int(365 * 1.5),
                                   simulation_date=sim_date,
-                                  mc_iterations=5,
+                                  mc_iterations=100,
                                   figure_name=fig_name,
-                                  force_new=True,
+                                  force_new=False,
                                   show_total=True)
     for year in [
         '2023',

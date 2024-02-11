@@ -1,5 +1,5 @@
 from copy import deepcopy
-from typing import List, Dict
+from typing import List, Dict, Sequence
 
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
@@ -176,7 +176,9 @@ class AccountsList:
                              color=self.color,
                              alpha=0.5)
 
-    def barplot(self, period_seed_date: str, date_end: str = ""):
+    def barplot(self, period_seed_date: str,
+                date_end: str = "",
+                excluded_codes: Sequence[str] = ('internal_cashflow', 'credit')):
         data_df = list()
         overall_len = 0
         for acc in self:
@@ -191,6 +193,9 @@ class AccountsList:
 
         data = pd.concat(data_df, axis=1).loc[:, ['total']].sum(axis=1)
         data.sort_values(inplace=True, ascending=False)
+
+        if len(excluded_codes) > 0:
+            data.drop(labels=list(excluded_codes), inplace=True)
 
         income = data[data > 0].sum()
         expenses = data[data <= 0].sum()

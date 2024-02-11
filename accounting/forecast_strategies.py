@@ -21,7 +21,7 @@ class ForecastStrategy:
         return self.predict(*args, **kwargs)
 
     def get_serialized_prediction_path(self, account: Account, simulation_date: str) -> Path:
-        pred_path = Path(account.conf.serialized_objects_dir)
+        pred_path = Path(account.serialized_self_path).parent
         file_name = f"{account.name}_{self.__class__.__name__}_"
         if simulation_date == "":
             file_name += f"{account.most_recent_date.item().strftime('%Y-%m-%d')}"
@@ -140,12 +140,10 @@ class ForecastStrategy:
                 plt.figure(num=figure_name)
                 plt.plot(mean,
                          label="",
-                         linestyle='--',
-                         c=account.color)
+                         linestyle='--')
                 plt.fill_between(x=mean.index,
                                  y1=(mean-std)['balance'],
                                  y2=(mean+std)['balance'],
-                                 color=account.color,
                                  alpha=0.3)
 
 

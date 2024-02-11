@@ -1,0 +1,32 @@
+# Account attributs
+name: null
+interest_rate: 0
+type: null
+status: null
+
+# CSV-specific parameters
+encoding: null
+date_format: null
+separator: null
+has_header_row: False
+
+# Name of the columns in the csv file (assign them if not there).
+columns_names: [null]
+sorting_order: [null]
+sorting_ascendence: [False]
+
+# Names of the numerical columns with their sign:
+# -1 for negative with negative sign, 1 for positive, mixed or negative-without-negative sign columns.
+numerical_columns: [
+  [null, 1]
+]
+
+balance_column: null
+
+## Rows selection by applying a filter on a column (for accounts that share the same csv files, eg. Desjardins')
+rows_selection: null
+
+initial_balance: 0
+
+# Forecast strategies (Name of classes in accounting.prediction_stategies.py)
+forecast_strategies: [None]
