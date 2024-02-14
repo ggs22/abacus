@@ -1,3 +1,5 @@
+import datetime as dt
+
 import matplotlib.pyplot as plt
 
 from accounting import accounts, Account, AccountsList
@@ -42,7 +44,11 @@ if __name__ == "__main__":
     ]:
         accounts.barplot(year)
 
-    accounts.barplot("2023-12")
+    start_date = dt.date(dt.datetime.today().year, dt.datetime.today().month, 1)
+    for i in range(3, 0, -1):
+        dd = start_date - dt.timedelta(days=1*i)
+        start_date = dt.date(dd.year, dd.month, 1)
+        accounts.barplot(dd.strftime('%Y-%m'))
 
     accounts.plot_cumulative_balances(accounts=[accounts['NationalBankOP'],
                                                 accounts['NationalBankMC'],

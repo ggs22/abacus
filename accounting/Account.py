@@ -5,7 +5,7 @@ import pickle
 import logging
 
 from copy import deepcopy
-from typing import List, Tuple
+from typing import List, Tuple, Sequence
 from pathlib import Path
 
 import colorama
@@ -14,7 +14,6 @@ import pandas as pd
 import seaborn as sns
 import hashlib
 import matplotlib
-import matplotlib.cm as cm
 
 from matplotlib import pyplot as plt
 from utils import path_utils as pu
@@ -30,6 +29,8 @@ MC_SAMPLING = 'mc_sampling'
 PREDICTED_BALANCE = 'predicted_balance'
 
 AccountStats = pd.DataFrame
+TransactionData = pd.DataFrame
+
 
 def _mad(x: pd.Series) -> pd.Series:
     med = x.median()
@@ -38,7 +39,7 @@ def _mad(x: pd.Series) -> pd.Series:
     return mad
 
 
-def print_codes_menu(codes, transaction):
+def print_codes_menu(codes: Sequence[str], transaction: pd.Series):
     """
     Prints a CLI menu for manual transaction code assignation
     :param codes: List of possible transaction codes
@@ -54,7 +55,7 @@ def print_codes_menu(codes, transaction):
     print()
 
 
-def get_common_codes(cashflow: pd.DataFrame, description_column="description") -> pd.Series:
+def get_common_codes(cashflow: TransactionData, description_column="description") -> pd.Series:
     """
     This function returns a vector corresponding to all transaction code associated to the description vector given
     as argument

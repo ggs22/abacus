@@ -33,7 +33,9 @@ def get_last_day_of_the_period(seed_date: datetime.date, period_unit: str) -> da
         last_date = seed_date
     if period_unit == 'month':
         # make sure we cover the change-of-year case
-        last_date = datetime.date(seed_date.year + (seed_date.month == 12) * 1, (seed_date.month + 1) % 12, 1)
+        last_date = datetime.date(year=seed_date.year + (seed_date.month == 12) * 1,
+                                  month=(seed_date.month + 1) * (seed_date.month < 12) + 1 * (seed_date.month == 12),
+                                  day=1)
         last_date -= datetime.timedelta(days=1)
     if period_unit == 'year':
         last_date = datetime.date(seed_date.year + 1, 1, 1) - datetime.timedelta(days=1)
