@@ -18,7 +18,7 @@ import matplotlib
 from matplotlib import pyplot as plt
 from utils import path_utils as pu
 
-from utils.utils import data_dir
+from utils.utils import data_dir, mad
 from utils.datetime_utils import get_period_bounds
 from omegaconf.dictconfig import DictConfig
 
@@ -30,13 +30,6 @@ PREDICTED_BALANCE = 'predicted_balance'
 
 AccountStats = pd.DataFrame
 TransactionData = pd.DataFrame
-
-
-def _mad(x: pd.Series) -> pd.Series:
-    med = x.median()
-    res = abs(x - med)
-    mad = res.median()
-    return mad
 
 
 def print_codes_menu(codes: Sequence[str], transaction: pd.Series):
@@ -90,6 +83,15 @@ def _get_md5(string: str):
     return hashlib.md5(string=string.encode('utf-8')).digest()
 
 
+def _compute_daily_std(daily_ave: pd.Series, period_data: pd.DataFrame, delta_days: int) -> pd.Series:
+    res_daily_std = dict()
+    for _code in daily_ave.index:
+        _dd = period_data[period_data['code'] == _code]['merged'].to_numpy()
+        res_daily_std[_code] = np.sqrt(np.sum(np.power(_dd - daily_ave[_code].item(), 2)) / delta_days)
+    res_daily_std = pd.Series(res_daily_std)
+    return res_daily_std
+
+
 class Account:
 
     def __init__(self, conf: DictConfig):
@@ -104,13 +106,9 @@ class Account:
         self.initial_balance = self.conf.initial_balance
         self.status = self.conf.status
 
-        self.ignored_index: List[int] = None
+        self.logger = logging.getLogger(f"{self.name} account log: ")
 
-        self.prediction = None
-        self.legacy_account = None
-        self.use_legacy_stats = False
-
-        self.logger = logging.getLogger(f"{self.__class__.__name__} - {self.name}")
+        self.color = None
 
         if self.conf.balance_column is not None:
             self.balance_sign = self.conf.balance_column[1]
@@ -122,12 +120,11 @@ class Account:
 
         # If serialized objects exist, load them.
         if self.serialized_self_path.exists():
-            logger = logging.getLogger(self.logger_name)
             with open(self.serialized_self_path, 'rb') as f:
                 serialized_properties = pickle.load(file=f)
                 for prop, value in serialized_properties.__dict__.items():
                     setattr(self, prop, value)
-                logger.info(f"loaded from {self.serialized_self_path}")
+                self.logger.debug(f"loaded from {self.serialized_self_path}")
         # Otherwise initialize properties from scratch.
         else:
             # the following objects will be serialized by the self.save() function
@@ -135,12 +132,12 @@ class Account:
             self.transaction_data: pd.DataFrame = None
 
         # load raw data
-        self._import_csv_files()
+        self.import_csv_files()
 
     def __repr__(self):
         pres = f"{self.name}\n"
         pres += f"{len(self.transaction_data)} entries\n"
-        pres += f"last entry: {self.most_recent_date}.\n"
+        pres += f"last entry: {self.most_recent_date.strftime('%Y-%m-%d')}\n"
         pres += f"balance: {self.current_balance:.2f}$\n"
         pres += f"type: {self.conf.type}\n"
         pres += f"status: {self.conf.status}\n"
@@ -159,8 +156,8 @@ class Account:
         return ret
 
     @property
-    def logger_name(self) -> str:
-        return f"Account_{self.name}"
+    def statement_day(self) -> str | int:
+        return self.conf.statement_day
 
     @property
     def serialized_self_path(self) -> Path:
@@ -183,6 +180,14 @@ class Account:
         balance_column.drop(columns=balance_column.columns[0], inplace=True)
 
         return balance_column
+
+    @property
+    def balance_column_name(self) -> str:
+        if self.conf.balance_column is not None:
+            bal_col = self.conf.balance_column[0]
+        else:
+            bal_col = 'balance'
+        return bal_col
 
     @property
     def has_balance_column(self) -> bool:
@@ -212,13 +217,13 @@ class Account:
 
     @property
     def most_recent_date(self) -> datetime.date:
-        return self.transaction_data.tail(n=1).date
+        return pd.to_datetime(self.transaction_data.tail(n=1).date.item()).date()
 
     @property
     def current_balance(self) -> float:
         return self.balance_column.iloc[-1:, 0].item()
 
-    def _remove_csv_file_from_records(self, csv_file: Path | str) -> None:
+    def remove_csv_file_from_records(self, csv_file: Path | str) -> None:
         csv_file = Path(csv_file)
         file_hash = _get_md5(csv_file.name)
         try:
@@ -226,13 +231,14 @@ class Account:
         except IndexError as e:
             self.logger.error(f"Couldn't remove {str(csv_file)} from {self.name} records!:\n{e}")
 
-    def _import_csv_files(self) -> None:
+    def import_csv_files(self) -> None:
         csv_records_files = list()
         for file in Path(self.account_dir).joinpath("csv_data").glob('*.csv'):
             csv_records_files.append(file)
         for csv_file in csv_records_files:
             file_hash = _get_md5(csv_file.name)
             if file_hash not in self.processed_data_files:
+                self.processed_data_files.add(file_hash)
                 self.logger.info(f"Importing new data from {csv_file.name} for {self.name}")
 
                 cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
@@ -276,7 +282,6 @@ class Account:
                 cash_flow.reset_index(drop=True, inplace=True)
 
                 self.transaction_data = cash_flow
-                self.processed_data_files.add(file_hash)
 
     def _get_account_specific_codes(self, cashflow: pd.DataFrame, description_column="description") -> List[str]:
         """
@@ -332,70 +337,81 @@ class Account:
             balance += self.conf.initial_balance if 'initial_balance' in self.conf else balance
         return balance
 
-    def get_period_data(self, period_seed_date: str, date_end: str = "") -> Tuple[pd.DataFrame, int]:
-        first_day, last_day = get_period_bounds(period_seed_date, date_end)
+    def get_balance_at_date(self, date: str | datetime.date):
+        """
+        :param date: Date in the form of an iso-compatible string (eg. 2000-01-01) or a datetime.date object.
+        :return: The balance at the given date, or the closest date available. If more than one date are tied for
+        closest date, the earliest date is returned.
+        """
+        if not isinstance(date, datetime.date):
+            date = datetime.date.fromisoformat(date)
+
+        are_near = abs(self.balance_column.index.date - date) == min(abs(self.balance_column.index.date - date))
+        if self.balance_column[are_near].index.date[0] > date:
+            bal = 0
+            for ix, near_idx in enumerate(are_near):
+                if near_idx:
+                    if ix > 0:
+                        bal = self.balance_column.iloc[ix-1, 0]
+                        break
+        else:
+            bal = self.balance_column[are_near].iloc[-1:, 0].item()
+        return bal
+
+    def get_period_data(self, start_date: str, end_date: str = "") -> Tuple[pd.DataFrame, int]:
+        first_day, last_day = get_period_bounds(start_date, end_date)
         period_data = deepcopy(self.transaction_data)
         period_data = period_data[(period_data['date'].array.date >= first_day) &
                                   (period_data['date'].array.date <= last_day)]
+
         if len(period_data) > 0:
-            # The data is supposed to be sorted in ascending date order
-            first_day = period_data.head(1)['date'].array.date[0]
-            last_day = period_data.tail(1)['date'].array.date[0]
             days = (last_day - first_day).days + 1
         else:
             period_data, days = None, 0
 
         return period_data, days
 
-    def period_stats(self, date: str, date_end: str = "", **kwargs) -> AccountStats | None:
+    def period_stats(self, date: str, end_date: str = "", last_n_days: int | None = None) -> AccountStats | None:
 
-        if self.legacy_account is not None and self.use_legacy_stats:
-            # TODO potential for endless recursion, re-think this
-            period_stats = self.legacy_account.period_stats(date, date_end, **kwargs)
+        if last_n_days is not None:
+            self.logger.debug(f"'last_n_days was set in {self.name}.period_stats. 'date' will be ignored")
+            end_date = self.most_recent_date
+            start_date = end_date - datetime.timedelta(days=last_n_days)
+            period_data, delta_days = self.get_period_data(start_date=start_date.strftime("%Y-%m-%d"),
+                                                           end_date=end_date.strftime("%Y-%m-%d"))
         else:
-            period_data, delta_days = self.get_period_data(date, date_end)
+            period_data, delta_days = self.get_period_data(date, end_date)
 
-            if period_data is not None:
+        if period_data is not None:
 
-                if self.ignored_index is not None:
-                    period_data = period_data[~period_data.index.isin(self.ignored_index)]
+            period_data['merged'] = (period_data.loc[:, self.numerical_names] * self.numerical_signs).sum(axis=1)
+            period_data.drop(columns=self.numerical_names, inplace=True)
 
-                num_cols = [col for col, _ in self.conf.numerical_columns]
-                signs = [sign for _, sign in self.conf.numerical_columns]
+            t_counts = period_data[['merged', 'code']].groupby(by='code').count().merged
+            t_daily_prob = (t_counts / delta_days)
 
-                period_data[num_cols] *= signs
-                period_data['merged'] = period_data[num_cols].sum(axis=1)
-                period_data.drop(columns=num_cols, inplace=True)
+            t_sum = period_data[['merged', 'code']].groupby(by='code').sum(numeric_only=True).merged
+            t_ave = period_data[['merged', 'code']].groupby(by='code').mean(numeric_only=True).merged
+            t_daily_ave = t_sum/delta_days
+            t_med = period_data[['merged', 'code']].groupby(by='code').median(numeric_only=True).merged
 
-                t_counts = period_data[['merged', 'code']].groupby(by='code').count().merged
-                t_daily_prob = (t_counts / delta_days)
+            t_daily_std = _compute_daily_std(daily_ave=t_daily_ave, period_data=period_data, delta_days=delta_days)
 
-                t_sum = period_data[['merged', 'code']].groupby(by='code').sum(numeric_only=True).merged
-                t_ave = period_data[['merged', 'code']].groupby(by='code').mean(numeric_only=True).merged
-                t_daily_ave = t_sum/delta_days
-                t_med = period_data[['merged', 'code']].groupby(by='code').median(numeric_only=True).merged
+            t_mad = period_data[['merged', 'code']].groupby(by='code')['merged'].apply(mad)
+            t_std = period_data[['merged', 'code']].groupby(by='code').std(numeric_only=True).merged
 
-                t_daily_std = dict()
-                for code in t_daily_ave.index:
-                    _d = period_data[period_data['code'] == code]['merged'].to_numpy()
-                    t_daily_std[code] = np.sqrt(np.sum(np.power(_d - t_daily_ave[code].item(), 2))/delta_days)
-                t_daily_std = pd.Series(t_daily_std)
-
-                t_mad = period_data[['merged', 'code']].groupby(by='code')['merged'].apply(_mad)
-                t_std = period_data[['merged', 'code']].groupby(by='code').std(numeric_only=True).merged
-
-                period_stats = pd.DataFrame({'sums': t_sum,
-                                             'daily_mean': t_daily_ave,
-                                             'mean': t_ave,
-                                             'transac_median': t_med,
-                                             'daily_std': t_daily_std,
-                                             'mad': t_mad,
-                                             'std': t_std,
-                                             'daily_prob': t_daily_prob,
-                                             'count': t_counts},
-                                            index=t_std.index).replace(np.nan, 0)
-            else:
-                period_stats = None
+            period_stats = pd.DataFrame({'sums': t_sum,
+                                         'daily_mean': t_daily_ave,
+                                         'mean': t_ave,
+                                         'transac_median': t_med,
+                                         'daily_std': t_daily_std,
+                                         'mad': t_mad,
+                                         'std': t_std,
+                                         'daily_prob': t_daily_prob,
+                                         'count': t_counts},
+                                        index=t_std.index).replace(np.nan, 0)
+        else:
+            period_stats = None
 
         return period_stats
 
@@ -419,8 +435,7 @@ class Account:
         destination.parent.mkdir(parents=True, exist_ok=True)
         with open(str(destination), 'wb') as f:
             pickle.dump(obj=self, file=f)
-            logger = logging.getLogger(self.logger_name)
-            logger.info(f"Saved to {str(destination)}")
+            self.logger.info(f"Saved to {str(destination)}")
 
     def export(self):
         export_dir = Path(self.account_dir).joinpath('exports')
@@ -472,8 +487,8 @@ class Account:
     def change_transaction_code(self, ix, code):
         self.transaction_data.loc[ix, 'code'] = code
 
-    def clear_period(self, period_seed_date: str, date_end: str = "", inplace=False) -> pd.DataFrame:
-        period_data, _ = self.get_period_data(period_seed_date, date_end)
+    def clear_period(self, start_date: str, end_date: str = "", inplace=False) -> pd.DataFrame:
+        period_data, _ = self.get_period_data(start_date, end_date)
         if period_data is not None:
             ix = period_data.index
             cleared_period = self.transaction_data.drop(labels=ix, inplace=inplace)
@@ -495,6 +510,14 @@ class Account:
 
         planned = {col_name: list() for col_name in self.conf.columns_names}
         planned['code'] = list()
+
+        def _add_to_planned(_planned_date, _amount, _code):
+            planned['date'].append(pd.to_datetime(_planned_date))
+            planned[self.negative_names[0]].append(_amount * (_amount <= 0))
+            planned[self.positive_names[0]].append(_amount * (not (_amount <= 0)))
+            planned['description'].append(PREDICTED_BALANCE)
+            planned['code'].append(_code)
+
         for description, transactions in yearly_transactions.items():
             for ix in range(num_years + 1):
                 amount = transactions[0]
@@ -503,32 +526,23 @@ class Account:
                     f"{str(first_day.year + ix)}-{'0' * (planned_month < 10)}{transactions[1]}"
                 )
                 if first_day < planned_date < last_day:
-                    planned['date'].append(pd.to_datetime(planned_date))
-                    planned[self.negative_names[0]].append(amount * (amount <= 0))
-                    planned[self.positive_names[0]].append(amount * (not (amount <= 0)))
-                    planned['description'].append(PREDICTED_BALANCE)
-                    planned['code'].append(transactions[2])
+                    _add_to_planned(planned_date, amount, transactions[2])
 
         for description, transactions in monthly_transactions.items():
             year_carry_over = 0
             for ix in range(num_months + 1):
-                amount = transactions[0]
-                code = transactions[2]
+
                 planned_month = (first_day.month + ix) % 12
                 planned_month = 12 if planned_month == 0 else planned_month
                 if ix > 0 and planned_month == 1:
                     year_carry_over += 1
-                planned_date = datetime.date.fromisoformat(
-                    f"{str(first_day.year + year_carry_over)}-"
-                    f"{'0' * (planned_month < 10)}{planned_month}-"
-                    f"{'0' * (int(transactions[1]) < 10)}{transactions[1]}"
-                )
+                planned_date = datetime.date.fromisoformat(f"{str(first_day.year + year_carry_over)}-"
+                                                           f"{planned_month:02}-"
+                                                           f"{transactions[1]:02}")
+
                 if first_day < planned_date < last_day:
-                    planned['date'].append(pd.to_datetime(planned_date))
-                    planned[self.negative_names[0]].append(amount * (amount <= 0))
-                    planned[self.positive_names[0]].append(amount * (not (amount <= 0)))
-                    planned['description'].append(PREDICTED_BALANCE)
-                    planned['code'].append(code)
+                    amount = transactions[0]
+                    _add_to_planned(planned_date, amount, transactions[2])
 
         for description, transactions in unique_transactions.items():
             if isinstance(transactions[0], list):
@@ -540,13 +554,8 @@ class Account:
                 planned_date = datetime.date.fromisoformat(unique_transaction[1])
                 code = unique_transaction[2]
                 if first_day < planned_date < last_day:
-                    if amount <= 0:
-                        planned[self.negative_names[0]].append(amount)
-                        planned[self.positive_names[0]].append(0)
-                    elif amount > 0:
-                        planned[self.negative_names[0]].append(0)
-                        planned[self.positive_names[0]].append(amount)
-
+                    planned[self.negative_names[0]].append(amount * (amount <= 0))
+                    planned[self.positive_names[0]].append(amount * (amount > 0))
                     planned['date'].append(pd.to_datetime(planned_date))
                     planned['description'].append(PREDICTED_BALANCE)
                     planned['code'].append(code)
@@ -570,12 +579,14 @@ class Account:
 
     def plot(self, figure_name: str = None, c: str | None = None):
         plt.figure(num=figure_name)
+        if c is None:
+            c = self.color
         plt.plot(self.balance_column, label=self.name, c=c)
 
-    def histplot(self, period_seed_date: str, date_end: str = "", c: str | None = None):
-        data, _ = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
+    def histplot(self, start_date: str, end_date: str = "", c: str | None = None):
+        data, _ = self.get_period_data(start_date=start_date, end_date=end_date)
         if data is not None:
-            plt.figure(f"Histplot {self.name} - {period_seed_date}" + f" {date_end}" * (date_end != ""))
+            plt.figure(f"Histplot {self.name} - {start_date}" + f" {end_date}" * (end_date != ""))
             cols = list()
             signs = list()
             for col, sign in self.conf.numerical_columns:
@@ -583,19 +594,19 @@ class Account:
                 signs += [sign]
             data['merged'] = (data.loc[:, cols] * signs).sum(axis=1)
             sns.histplot(data=data, x='merged', log_scale=(False, False), color=c)
-            plt.title(f"{self.name}\n{period_seed_date}" + f" - {date_end}" * (date_end != ""))
+            plt.title(f"{self.name}\n{start_date}" + f" - {end_date}" * (end_date != ""))
 
-    def barplot(self, period_seed_date: str, date_end: str = ""):
-        data, period_length = self.get_period_data(period_seed_date=period_seed_date, date_end=date_end)
+    def barplot(self, start_date: str, end_date: str = ""):
+        data, period_length = self.get_period_data(start_date=start_date, end_date=end_date)
         if data is not None:
             data: pd.DataFrame = data.groupby(by='code').sum(numeric_only=True)
             data['total'] = (data.loc[:, self.numerical_names] * self.numerical_signs).sum(axis=1)
             data.sort_values(by='total', ascending=False, inplace=True)
-            plt.figure(num=f"{self.name} - {period_seed_date}")
+            plt.figure(num=f"{self.name} - {start_date}")
 
             income = data[data['total'] > 0]['total'].sum()
             expenses = data[data['total'] <= 0]['total'].sum()
-            plt.title(label=f"{self.name} - {period_seed_date}\n"
+            plt.title(label=f"{self.name} - {start_date}\n"
                             f"in: {income: .2f}, out: {expenses: .2f}, bal: {income+expenses: .2f}")
             colors = list()
             for amount in data.total:
@@ -607,12 +618,12 @@ class Account:
                          y=stat,
                          s=f"{data.loc[stat, 'total']: .2f} / {data.loc[stat, 'total']/period_length: .2f}")
 
-    def filter_by_code(self, code: str, period_seed_date: str = "", date_end: str = "") -> pd.DataFrame | None:
-        if period_seed_date == "":
+    def filter_by_code(self, code: str, start_date: str = "", end_date: str = "") -> pd.DataFrame | None:
+        if start_date == "":
             filtered_data = deepcopy(self.transaction_data)
         else:
-            filtered_data, _ = self.get_period_data(period_seed_date=period_seed_date,
-                                                    date_end=date_end)
+            filtered_data, _ = self.get_period_data(start_date=start_date,
+                                                    end_date=end_date)
 
         if filtered_data is not None:
             filtered_data = filtered_data[filtered_data['code'] == code]
@@ -620,12 +631,12 @@ class Account:
 
         return filtered_data
 
-    def filter_by_description(self, description: str, period_seed_date: str = "", date_end: str = "") -> pd.DataFrame | None:
-        if period_seed_date == "":
+    def filter_by_description(self, description: str, start_date: str = "", end_date: str = "") -> pd.DataFrame | None:
+        if start_date == "":
             filtered_data = deepcopy(self.transaction_data)
         else:
-            filtered_data, _ = self.get_period_data(period_seed_date=period_seed_date,
-                                                    date_end=date_end)
+            filtered_data, _ = self.get_period_data(start_date=start_date,
+                                                    end_date=end_date)
 
         if filtered_data is not None:
             filtered_data = filtered_data[filtered_data["description"].str.contains(description)]

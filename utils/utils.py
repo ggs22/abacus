@@ -2,6 +2,9 @@
 import os
 import colorama
 import re
+
+import numpy as np
+import pandas as pd
 import pyperclip
 import datetime
 
@@ -78,7 +81,7 @@ def calculate_pay(days: int, clear=True):
     """
 
     daily_hours = 7.5
-    hourly_rate = (96000/1950)
+    hourly_rate = np.round(96000/1950, 2)
     rate = 0.671 if clear else 1
     return round(days * daily_hours * hourly_rate * rate, 2)
 
@@ -103,3 +106,10 @@ if __name__ == "__main__":
     edate = datetime.date(year=2025, month=12, day=31)
 
     print_lti_pays(start_date=sdate, end_date=edate)
+
+
+def mad(x: pd.Series) -> pd.Series:
+    med = x.median()
+    res = abs(x - med)
+    mad = res.median()
+    return mad

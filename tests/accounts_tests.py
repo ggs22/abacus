@@ -2,57 +2,94 @@ import datetime as dt
 
 import matplotlib.pyplot as plt
 
-from accounting import accounts, Account, AccountsList
+from accounting import AccountsList, AccountFactory
+from accounting.forecast_strategies import (
+    PlannedTransactionsStrategy, MonteCarloStrategy, FixedLoanPaymentForecastStrategy,
+    CreditCardPaymentForecastStrategy, RequestedForecastList, ForecastFactory
+)
+
+account_factory: AccountFactory = AccountFactory()
+accounts: AccountsList = account_factory.load_accounts()
+
 
 if __name__ == "__main__":
 
     fig_name = "All accounts"
     # for account in accounts:
-        # print(account.name)
-        # account.barplot('2023')
-        # account.histplot('2023')
-        # account.export()
+    #     print(account.name)
+    #     account.barplot('2023')
+    #     account.histplot('2023')
+    #
 
     accounts.plot(fig_name=fig_name)
 
-    accounts['CIBC'].ignored_index = [690, 692, 703, 708, 714, 717, 727]
-    accounts['DesjardinsOP'].ignored_index = [1581, 1586, 1587, 1588, 1673, 1674, 1675, 1676, 1681, 1682]
-    accounts['DesjardinsMC'].ignored_index = [454, 455, 487, 488, 491, 492]
+    # open_accounts = list()
+    # for account in accounts:
+    #     if account.status == "OPEN":
+    #         open_accounts.append(account)
+    # open_accounts = AccountsList(open_accounts)
+    # open_accounts.plot(fig_name=fig_name)
 
-    # TODO: get_planned_transaction should planned for payments
-    # TODO: predictions with interests
+    # TODO: implemented outliers-resilient stats
     # TODO: export data and re-import from csv (because of header=0 some first lines are missing),
     #  then lookup for duplicate lines and re-assign code from previous exports
 
-    accounts['NationalBankOP'].legacy_account = accounts
-    accounts['NationalBankMC'].legacy_account = accounts['DesjardinsMC']
+    sim_dates = ["2024-04-15", "2024-04-30"]
+    forecasts_factory = ForecastFactory()
 
-    accounts['NationalBankOP'].use_legacy_stats = True
-    accounts['NationalBankMC'].use_legacy_stats = False
+    for sim_date in sim_dates:
+        pred_args = {"predicted_days": (dt.date.fromisoformat("2024-12-31")-dt.date.fromisoformat(sim_date)).days,
+                     "simulation_date": sim_date,
+                     "mc_iterations": 100,
+                     "force_new": False,
+                     "show_total": True}
 
-    for sim_date in ['2024-01-08', '2024-01-27', ""]:
-        accounts.plot_predictions(predicted_days=int(365 * 1.5),
-                                  simulation_date=sim_date,
-                                  mc_iterations=100,
-                                  figure_name=fig_name,
-                                  force_new=False,
-                                  show_total=True)
-    for year in [
-        '2023',
-        '2022',
-        '2021'
-    ]:
-        accounts.barplot(year)
+        requested_forecasts: RequestedForecastList = [
+            (accounts['NationalBankOP'], MonteCarloStrategy(), pred_args),
+            (accounts['Paul'], PlannedTransactionsStrategy(), pred_args),
+            (accounts['CIBC'], MonteCarloStrategy(), pred_args),
+            (accounts['NationalBankTFSA'], PlannedTransactionsStrategy(), pred_args),
+            (accounts['NationalBankPR'], PlannedTransactionsStrategy(), pred_args)
+                     ]
+
+        forecasts = forecasts_factory(requested_forecasts)
+
+        requested_forecasts: RequestedForecastList = [
+            (accounts['NationalBankPR'],
+             FixedLoanPaymentForecastStrategy(),
+             {"op_forecast": forecasts['NationalBankOP'],
+              "loan_account": accounts['NationalBankPR'],
+              "loan_forecast": forecasts['NationalBankPR'],
+              "loan_rate": 0.0752,
+              "day_of_month": 1,
+              "payment_amount": 300}),
+            (accounts['NationalBankOP'],
+             CreditCardPaymentForecastStrategy(),
+             {"op_forecast": forecasts['NationalBankOP'],
+              "cc_account": accounts['CIBC'],
+              "cc_forecast": forecasts['CIBC']})
+        ]
+
+        loan_payment_forecast = forecasts_factory(requested_forecasts, forecasts)
+
+        accounts.plot_forecasts(forecasts=forecasts, figure_name=fig_name, show_total=False)
+
+    # for year in [
+    #     '2023',
+    #     '2022',
+    #     '2021'
+    # ]:
+    #     accounts.barplot(year)
 
     start_date = dt.date(dt.datetime.today().year, dt.datetime.today().month, 1)
-    for i in range(3, 0, -1):
+    for i in range(0, 4):
         dd = start_date - dt.timedelta(days=1*i)
         start_date = dt.date(dd.year, dd.month, 1)
         accounts.barplot(dd.strftime('%Y-%m'))
 
-    accounts.plot_cumulative_balances(accounts=[accounts['NationalBankOP'],
-                                                accounts['NationalBankMC'],
-                                                accounts['CIBC']],
-                                      fig_name="Cumul. National Bank OP-MC & CIBC")
+    # accounts.plot_cumulative_balances(accounts=[accounts['NationalBankOP'],
+    #                                             accounts['NationalBankMC'],
+    #                                             accounts['CIBC']],
+    #                                   fig_name="Cumul. National Bank OP-MC & CIBC")
 
     plt.show()
