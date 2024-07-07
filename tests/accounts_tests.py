@@ -34,11 +34,12 @@ if __name__ == "__main__":
     # TODO: export data and re-import from csv (because of header=0 some first lines are missing),
     #  then lookup for duplicate lines and re-assign code from previous exports
 
-    sim_dates = ["2024-04-15", "2024-04-30"]
+    # sim_dates = ["2024-04-15", "2024-04-30"]
+    sim_dates = ["2024-06-30"]
     forecasts_factory = ForecastFactory()
 
     for sim_date in sim_dates:
-        pred_args = {"predicted_days": (dt.date.fromisoformat("2024-12-31")-dt.date.fromisoformat(sim_date)).days,
+        pred_args = {"predicted_days": (dt.date.fromisoformat("2026-12-31")-dt.date.fromisoformat(sim_date)).days,
                      "simulation_date": sim_date,
                      "mc_iterations": 100,
                      "force_new": False,
@@ -60,7 +61,7 @@ if __name__ == "__main__":
              {"op_forecast": forecasts['NationalBankOP'],
               "loan_account": accounts['NationalBankPR'],
               "loan_forecast": forecasts['NationalBankPR'],
-              "loan_rate": 0.0752,
+              "loan_rate": 0.077,
               "day_of_month": 1,
               "payment_amount": 300}),
             (accounts['NationalBankOP'],
@@ -74,22 +75,18 @@ if __name__ == "__main__":
 
         accounts.plot_forecasts(forecasts=forecasts, figure_name=fig_name, show_total=False)
 
-    # for year in [
-    #     '2023',
-    #     '2022',
-    #     '2021'
-    # ]:
-    #     accounts.barplot(year)
-
     start_date = dt.date(dt.datetime.today().year, dt.datetime.today().month, 1)
-    for i in range(0, 4):
+    for i in range(0, 6):
         dd = start_date - dt.timedelta(days=1*i)
         start_date = dt.date(dd.year, dd.month, 1)
         accounts.barplot(dd.strftime('%Y-%m'))
 
     # accounts.plot_cumulative_balances(accounts=[accounts['NationalBankOP'],
     #                                             accounts['NationalBankMC'],
-    #                                             accounts['CIBC']],
-    #                                   fig_name="Cumul. National Bank OP-MC & CIBC")
+    #                                             accounts['CIBC'],
+    #                                             accounts['WealthSimpleOP'],
+    #                                             accounts['WealthSimpleTFSA'],
+    #                                             accounts['WealthSimpleFHSA']],
+    #                                   fig_name=fig_name)
 
     plt.show()

@@ -52,6 +52,9 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
     # LTI pays are max 16 days after pay period (fix dates pays)
     end_date = end_date + datetime.timedelta(days=16)
 
+    def _format_timestamp(year, month, date, amount):
+        return f"[{amount}, \"{year}-{month:02}-{date:02}\", \"pay\"],"
+
     for i in range(0, (end_date-start_date).days):
         d = start_date + datetime.timedelta(days=i)
         is_business_day = d.weekday() in [0, 1, 2, 3, 4]
@@ -61,14 +64,14 @@ def print_lti_pays(start_date: datetime.date, end_date: datetime.date):
             pay_amount = calculate_pay(last_count)
             last_count = current_count
             current_count = 0
-            print(f'pay,{d.year},{d.month},{d.day},0,{pay_amount},pay')
+            print(_format_timestamp(d.year, d.month, d.day, pay_amount))
         elif d.day == 1:
             payday = d - datetime.timedelta(days=1)  # we get the last day of the preceding month
             pay_amount = calculate_pay(last_count)
             b_day_shift = 1 if d.weekday() in [0, 1, 2, 3, 4] else 0
             last_count = current_count - b_day_shift
             current_count = b_day_shift
-            print(f'pay,{payday.year},{payday.month},{payday.day},0,{pay_amount},pay')
+            print(_format_timestamp(d.year, d.month, d.day, pay_amount))
             # switch_week = not switch_week
 
 
@@ -103,7 +106,7 @@ pickle_dir = os.path.join(root_dir, 'pickle_objects')
 
 if __name__ == "__main__":
     sdate = datetime.date(year=2023, month=12, day=1)
-    edate = datetime.date(year=2025, month=12, day=31)
+    edate = datetime.date(year=2026, month=12, day=31)
 
     print_lti_pays(start_date=sdate, end_date=edate)
 

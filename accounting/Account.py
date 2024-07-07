@@ -417,7 +417,7 @@ class Account:
 
     def validate_config(self):
 
-        suffix = f"In the yaml configuration file for the Account, "
+        suffix = f"In the yaml configuration file for {self.name}"
 
         # check that all listed numerical columns are listed in the columns
         for numerical_col in self.conf.numerical_columns:

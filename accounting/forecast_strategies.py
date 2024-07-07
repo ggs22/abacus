@@ -388,23 +388,8 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
                 day_of_month: int,
                 payment_amount: float | int | None = None) -> Dict[str, Forecast]:
 
-        """
-        :param op_forecast:         Prediction of the account from which the amount is taken.
-        :param loan_forecast:           Prediction of the account where the amount is deposited.
-        :param day_of_month:        The date at which the internal transaction will be done.
-        :param payment_amount:              The amount off the transaction. Optional if amount_at_date is specified.
-        :param amount_at_date:      The amount at a previous date which will be determined at runtime.
-                                    Optional, has no effect if 'amount' is specified. At leas one of the two must
-                                    be specified.
-        :return:                    A prediction for both accounts reflecting the internal monthly transaction and
-                                    the interest if applicable.
-        """
-
         first_sim_date_op = pd.to_datetime(np.unique(op_forecast.forecast_data.date.array)[0]).date()
-        last_sim_date_op = pd.to_datetime(np.unique(op_forecast.forecast_data.date.array)[-1]).date()
-
         first_sim_date_loan = pd.to_datetime(np.unique(loan_forecast.forecast_data.date.array)[0]).date()
-        last_sim_date_loan = pd.to_datetime(np.unique(loan_forecast.forecast_data.date.array)[-1]).date()
 
         date_month_pairs = [(pd.to_datetime(date).date().year, pd.to_datetime(date).date().month)
                             for date in np.unique(op_forecast.forecast_data.date.array)]
@@ -449,10 +434,14 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
             loan_internal_transactions = {col: list() for col in loan_forecast.forecast_data.columns}
 
             transaction_date = datetime.date.fromisoformat(f"{year}-{month:02}-{day_of_month:02}")
-            idx = (grouped_join_view.index.levels[0] == year) & (grouped_join_view.index.levels[1] == month)
-            if all(idx == False):
+            idx = pd.IndexSlice
+            if len(grouped_join_view.loc[idx[year, month], :]) == 0:
                 continue
-            interest_amount = float(grouped_join_view[idx]['daily_interest'].values[0])
+            elif len(grouped_join_view.loc[idx[year, month], :]) == 1:
+                interest_amount = float(grouped_join_view.loc[idx[year, month], 'daily_interest'])
+            else:
+                interest_amount = float(grouped_join_view.loc[idx[year, month], 'daily_interest'].values[0])
+
             del idx
 
             if first_sim_date_op <= transaction_date:
@@ -567,40 +556,17 @@ class CreditCardPaymentForecastStrategy(ForecastStrategy):
 
         date_month_pairs = set(date_month_pairs)
 
-        def _apply_date_shift(df: pd.DataFrame) -> pd.DataFrame:
-            df['date_diff'] = df.date.diff()
-            df['date_diff'] = df['date_diff'].shift(-1)
-            df = df.replace(np.nan, datetime.timedelta(days=0))
-            df['date_diff'] = df['date_diff'].apply(lambda i: int(i.days))
-            return df
-
         idx = cc_account.transaction_data.date.array.date < first_sim_date_loan
 
         historical_cc_data: pd.DataFrame = copy(cc_account.transaction_data.loc[idx])
         historical_cc_data[cc_account.balance_column_name] = cc_account.get_balance()
-        # historical_cc_data = _apply_date_shift(historical_cc_data)
-
-        # shifted_cc_pred = copy(cc_pred)
-        # shifted_cc_pred = _apply_date_shift(shifted_cc_pred)
-        # historical_cc_data.columns = shifted_cc_pred.columns
 
         del idx
 
         for year, month in sorted(date_month_pairs):
 
             shifted_cc_pred = copy(cc_forecast.forecast_data)
-            # shifted_cc_pred = _apply_date_shift(shifted_cc_pred)
-
             join_view = pd.concat([historical_cc_data, shifted_cc_pred])
-            # join_view = _apply_date_shift(join_view)
-            # join_view.sort_values(by='date', inplace=True, ignore_index=True)
-            # join_view['year'] = join_view.date.apply(lambda d: pd.to_datetime(d).date().year)
-            # join_view['month'] = join_view.date.apply(lambda d: pd.to_datetime(d).date().month)
-            # join_view['daily_interest'] = join_view['date_diff'] * abs(join_view[account.balance_column_name]) * (cc_account.conf.interest_rate / 365.25)
-
-            # grouped_join_view = join_view.loc[:, ["year", "month", "daily_interest"]].groupby(by=["year", "month"]).sum()
-            # grouped_join_view['daily_interest'] = grouped_join_view['daily_interest'].shift()
-            # grouped_join_view.replace(np.nan, 0, inplace=True)
 
             op_pred_l = {col: list() for col in op_forecast.forecast_data.columns}
             cc_pred_l = {col: list() for col in cc_forecast.forecast_data.columns}
