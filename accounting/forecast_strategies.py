@@ -224,7 +224,11 @@ class NoTransactionsStrategy(ForecastStrategy):
                                                      force_new=force_new)
         pred.sort_values(by='date', inplace=True)
         pred.reset_index(drop=True, inplace=True)
-        pred[account.balance_column_name] = ((pred.loc[:, [account.positive_names[0], account.negative_names[0]]]).sum(axis=1).cumsum() +
+        if account.positive_names[0] != account.negative_names[0]:
+            cols = [account.positive_names[0], account.negative_names[0]]
+        else:
+            cols = [account.positive_names[0]]
+        pred[account.balance_column_name] = ((pred.loc[:, cols]).sum(axis=1).cumsum() +
                            balance_offset +
                            bal_at_sim_date)
 
@@ -287,7 +291,11 @@ class PlannedTransactionsStrategy(ForecastStrategy):
 
         pred.sort_values(by='date', inplace=True)
         pred.reset_index(drop=True, inplace=True)
-        pred[account.balance_column_name] = ((pred.loc[:, [account.positive_names[0], account.negative_names[0]]]).sum(axis=1).cumsum() +
+        if account.positive_names[0] != account.negative_names[0]:
+            cols = [account.positive_names[0], account.negative_names[0]]
+        else:
+            cols = [account.positive_names[0]]
+        pred[account.balance_column_name] = ((pred.loc[:, cols]).sum(axis=1).cumsum() +
                                              balance_offset +
                                              bal_at_sim_date)
 
@@ -369,7 +377,10 @@ class MonteCarloStrategy(ForecastStrategy):
             pred = pd.concat([pred, *planned_transactions_list], axis=0)
         pred.sort_values(by=[ITERATION, 'date'], inplace=True)
         pred.reset_index(drop=True, inplace=True)
-        cols = [ITERATION, account.positive_names[0], account.negative_names[0]]
+        if account.positive_names[0] != account.negative_names[0]:
+            cols = [ITERATION, account.positive_names[0], account.negative_names[0]]
+        else:
+            cols = [ITERATION, account.positive_names[0]]
 
         pred[account.balance_column_name] = (pred.loc[:, cols].groupby(by=ITERATION).cumsum().sum(axis=1) +
                                              bal_at_sim_date)
@@ -454,16 +465,22 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
                 for mc_iteration in op_forecast.forecast_data[ITERATION].unique():
                     op_internal_transactions['date'].append(transaction_date)
                     op_internal_transactions['description'].append("predicted interest BNC PR")
-                    op_internal_transactions[account.positive_names[0]].append(0)
-                    op_internal_transactions[account.negative_names[0]].append(-interest_amount)
+                    if account.positive_names[0] != account.negative_names[0]:
+                        op_internal_transactions[account.positive_names[0]].append(0)
+                        op_internal_transactions[account.negative_names[0]].append(-interest_amount)
+                    else:
+                        op_internal_transactions[account.positive_names[0]].append(-interest_amount)
                     op_internal_transactions['code'].append('internal_cashflow')
                     op_internal_transactions[ITERATION].append(mc_iteration)
                     op_internal_transactions[account.balance_column_name].append(0)
 
                     op_internal_transactions['date'].append(transaction_date)
                     op_internal_transactions['description'].append("predicted capital paid BNC PR")
-                    op_internal_transactions[account.positive_names[0]].append(0)
-                    op_internal_transactions[account.negative_names[0]].append(-(payment_amount - interest_amount))
+                    if account.positive_names[0] != account.negative_names[0]:
+                        op_internal_transactions[account.positive_names[0]].append(0)
+                        op_internal_transactions[account.negative_names[0]].append(-(payment_amount - interest_amount))
+                    else:
+                        op_internal_transactions[account.positive_names[0]].append(-(payment_amount - interest_amount))
                     op_internal_transactions['code'].append('internal_cashflow')
                     op_internal_transactions[ITERATION].append(mc_iteration)
                     op_internal_transactions[account.balance_column_name].append(0)
@@ -471,15 +488,21 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
             if first_sim_date_loan <= transaction_date:
                 loan_internal_transactions['date'].append(transaction_date)
                 loan_internal_transactions['description'].append("predicred interest")
-                loan_internal_transactions[account.positive_names[0]].append(interest_amount)
-                loan_internal_transactions[account.negative_names[0]].append(-interest_amount)
+                if account.positive_names[0] != account.negative_names[0]:
+                    loan_internal_transactions[account.positive_names[0]].append(interest_amount)
+                    loan_internal_transactions[account.negative_names[0]].append(-interest_amount)
+                else:
+                    loan_internal_transactions[account.positive_names[0]].append(0)
                 loan_internal_transactions['code'].append('internal_cashflow')
                 loan_internal_transactions[loan_account.balance_column_name].append(0)
 
                 loan_internal_transactions['date'].append(transaction_date)
                 loan_internal_transactions['description'].append("predicted capital paid")
-                loan_internal_transactions[account.positive_names[0]].append((payment_amount-interest_amount))
-                loan_internal_transactions[account.negative_names[0]].append(0)
+                if account.positive_names[0] != account.negative_names[0]:
+                    loan_internal_transactions[account.positive_names[0]].append((payment_amount-interest_amount))
+                    loan_internal_transactions[account.negative_names[0]].append(0)
+                else:
+                    loan_internal_transactions[account.positive_names[0]].append((payment_amount - interest_amount))
                 loan_internal_transactions['code'].append('internal_cashflow')
                 loan_internal_transactions[loan_account.balance_column_name].append(0)
 
@@ -499,11 +522,14 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
             loan_forecast.forecast_data.reset_index(drop=True, inplace=True)
             op_forecast.forecast_data.reset_index(drop=True, inplace=True)
 
-            cols = [loan_account.positive_names[0], loan_account.negative_names[0]]
+            if loan_account.positive_names[0] != loan_account.negative_names[0]:
+                cols = [loan_account.positive_names[0], loan_account.negative_names[0]]
+            else:
+                cols = [loan_account.positive_names[0]]
             loan_forecast.forecast_data[loan_account.balance_column_name] = (
                     loan_forecast.forecast_data.loc[:, cols].cumsum().sum(axis=1) + loan_forecast.forecast_data.loc[0, loan_account.balance_column_name]
             )
-            cols = [ITERATION, account.positive_names[0], account.negative_names[0]]
+            cols = [ITERATION, *cols]
             op_forecast.forecast_data[account.balance_column_name] = (
                     (op_forecast.forecast_data.loc[:, cols].groupby(by=ITERATION).cumsum().sum(axis=1)) + op_forecast.forecast_data.loc[0, account.balance_column_name]
             )
@@ -588,8 +614,11 @@ class CreditCardPaymentForecastStrategy(ForecastStrategy):
                 for mc_iteration in op_forecast.forecast_data[ITERATION].unique():
                     op_pred_l['date'].append(transaction_date)
                     op_pred_l['description'].append("predicted interest BNC PR")
-                    op_pred_l[account.positive_names[0]].append(0)
-                    op_pred_l[account.negative_names[0]].append(statement_amount)
+                    if account.positive_names[0] != account.negative_names[0]:
+                        op_pred_l[account.positive_names[0]].append(0)
+                        op_pred_l[account.negative_names[0]].append(statement_amount)
+                    else:
+                        op_pred_l[account.positive_names[0]].append(statement_amount)
                     op_pred_l['code'].append('internal_cashflow')
                     op_pred_l[ITERATION].append(mc_iteration)
                     op_pred_l[account.balance_column_name].append(0)
@@ -598,8 +627,11 @@ class CreditCardPaymentForecastStrategy(ForecastStrategy):
                 for mc_iteration in cc_forecast.forecast_data[ITERATION].unique():
                     cc_pred_l['date'].append(transaction_date)
                     cc_pred_l['description'].append("predicted cc payment")
-                    cc_pred_l[cc_account.positive_names[0]].append(-statement_amount)
-                    cc_pred_l[cc_account.negative_names[0]].append(0)
+                    if cc_account.positive_names[0] != cc_account.negative_names[0]:
+                        cc_pred_l[cc_account.positive_names[0]].append(-statement_amount)
+                        cc_pred_l[cc_account.negative_names[0]].append(0)
+                    else:
+                        cc_pred_l[cc_account.positive_names[0]].append(-statement_amount)
                     cc_pred_l['code'].append('internal_cashflow')
                     cc_pred_l[ITERATION].append(mc_iteration)
                     cc_pred_l[cc_account.balance_column_name].append(0)
@@ -624,9 +656,16 @@ class CreditCardPaymentForecastStrategy(ForecastStrategy):
             cc_forecast.forecast_data.reset_index(drop=True, inplace=True)
             op_forecast.forecast_data.reset_index(drop=True, inplace=True)
 
-            cols = [ITERATION, cc_account.positive_names[0], cc_account.negative_names[0]]
+            if cc_account.positive_names[0] != cc_account.negative_names[0]:
+                cols = [ITERATION, cc_account.positive_names[0], cc_account.negative_names[0]]
+            else:
+                cols = [ITERATION, cc_account.positive_names[0]]
             cc_forecast.forecast_data[cc_account.balance_column_name] = cc_forecast.forecast_data.loc[:, cols].groupby(by=ITERATION).cumsum().sum(axis=1) + cc_forecast.forecast_data.loc[0, cc_account.balance_column_name]
-            cols = [ITERATION, account.positive_names[0], account.negative_names[0]]
+
+            if account.positive_names[0] != account.negative_names[0]:
+                cols = [ITERATION, account.positive_names[0], account.negative_names[0]]
+            else:
+                cols = [ITERATION, account.positive_names[0]]
             op_forecast.forecast_data[account.balance_column_name] = op_forecast.forecast_data.loc[:, cols].groupby(by=ITERATION).cumsum().sum(axis=1) + op_forecast.forecast_data.loc[0, account.balance_column_name]
 
             del cols

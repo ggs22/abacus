@@ -516,8 +516,14 @@ class Account:
 
         def _add_to_planned(_planned_date, _amount, _code):
             planned['date'].append(pd.to_datetime(_planned_date))
-            planned[self.negative_names[0]].append(_amount * (_amount <= 0))
-            planned[self.positive_names[0]].append(_amount * (not (_amount <= 0)))
+            if _amount <= 0:
+                planned[self.negative_names[0]].append(_amount)
+                if self.negative_names[0] != self.positive_names[0]:
+                    planned[self.positive_names[0]].append(0)
+            else:
+                planned[self.positive_names[0]].append(_amount)
+                if self.negative_names[0] != self.positive_names[0]:
+                    planned[self.negative_names[0]].append(0)
             planned['description'].append(PREDICTED_BALANCE)
             planned['code'].append(_code)
 
@@ -557,8 +563,14 @@ class Account:
                 planned_date = datetime.date.fromisoformat(unique_transaction[1])
                 code = unique_transaction[2]
                 if first_day < planned_date < last_day:
-                    planned[self.negative_names[0]].append(amount * (amount <= 0))
-                    planned[self.positive_names[0]].append(amount * (amount > 0))
+                    if amount <= 0:
+                        planned[self.negative_names[0]].append(amount)
+                        if self.negative_names[0] != self.positive_names[0]:
+                            planned[self.positive_names[0]].append(0)
+                    elif amount > 0:
+                        planned[self.positive_names[0]].append(amount)
+                        if self.negative_names[0] != self.positive_names[0]:
+                            planned[self.negative_names[0]].append(0)
                     planned['date'].append(pd.to_datetime(planned_date))
                     planned['description'].append(PREDICTED_BALANCE)
                     planned['code'].append(code)
