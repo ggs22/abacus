@@ -209,7 +209,10 @@ class Account:
 
     @property
     def negative_names(self) -> List[str]:
-        return [name for name, sign in zip(self.numerical_names, self.numerical_signs) if sign < 0]
+        neg = [name for name, sign in zip(self.numerical_names, self.numerical_signs) if sign < 0]
+        if len(neg) == 0:
+            neg = self.positive_names
+        return neg
 
     @property
     def columns_names(self) -> List[str]:

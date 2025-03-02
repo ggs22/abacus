@@ -45,7 +45,8 @@ class ForecastStrategy:
         for _amount in amount:
             neg = _amount <= 0
             pred[account.negative_names[0]].append(_amount * neg + 0 * (not neg))
-            pred[account.positive_names[0]].append(0 * neg + _amount * (not neg))
+            if account.positive_names[0] != account.negative_names[0]:
+                pred[account.positive_names[0]].append(0 * neg + _amount * (not neg))
 
     def _prediction_wraper(self,
                            account: Account,
@@ -435,12 +436,17 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
 
             transaction_date = datetime.date.fromisoformat(f"{year}-{month:02}-{day_of_month:02}")
             idx = pd.IndexSlice
-            if len(grouped_join_view.loc[idx[year, month], :]) == 0:
-                continue
-            elif len(grouped_join_view.loc[idx[year, month], :]) == 1:
-                interest_amount = float(grouped_join_view.loc[idx[year, month], 'daily_interest'])
-            else:
-                interest_amount = float(grouped_join_view.loc[idx[year, month], 'daily_interest'].values[0])
+
+            try:
+                grouped_join_view_len = len(grouped_join_view.loc[idx[year, month], :])
+                if grouped_join_view_len == 0:
+                    continue
+                elif grouped_join_view_len == 1:
+                    interest_amount = float(grouped_join_view.loc[idx[year, month], 'daily_interest'])
+                else:
+                    interest_amount = float(grouped_join_view.loc[idx[year, month], 'daily_interest'].values[0])
+            except KeyError:
+                interest_amount = 0
 
             del idx
 

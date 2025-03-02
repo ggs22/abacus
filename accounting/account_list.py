@@ -80,6 +80,11 @@ class AccountsList:
 
         return total
 
+    def interactive_codes_update(self):
+        for acc in self:
+            print(acc)
+            acc.interactive_codes_update()
+
     @property
     def balance_column(self) -> pd.DataFrame:
         return self._sum_balances_columns()
@@ -147,7 +152,7 @@ class AccountsList:
 
         label = "summed balance"
         for account in accounts:
-            label += f" {account.name}"
+            label += f" {account.name}\n"
 
         plt.figure(num=fig_name)
         plt.plot(total['balance_total'], label=label, c=self.color)
@@ -156,6 +161,7 @@ class AccountsList:
     def plot_forecasts(self,
                        forecasts: Dict[str, Forecast],
                        show_total: bool = True,
+                       total_offset: float = 0.,
                        figure_name: str = "") -> None:
 
         mean_bal = list()
@@ -174,6 +180,7 @@ class AccountsList:
             total_std = pd.concat(std_bal, axis=1)
             total_std = total_std.ffill().dropna()
             total['balance_total'] = total.sum(axis=1)
+            total['balance_total'] += total_offset
             total_std['balance_std'] = total_std.std(axis=1)
             plt.plot(total['balance_total'], linestyle="--", label="", c=self.color)
             plt.fill_between(x=total.index,
