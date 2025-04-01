@@ -514,7 +514,7 @@ class Account:
         planned = {col_name: list() for col_name in self.conf.columns_names}
         planned['code'] = list()
 
-        def _add_to_planned(_planned_date, _amount, _code):
+        def _add_to_planned(_planned_date, _amount, _code, _description):
             planned['date'].append(pd.to_datetime(_planned_date))
             if _amount <= 0:
                 planned[self.negative_names[0]].append(_amount)
@@ -524,7 +524,7 @@ class Account:
                 planned[self.positive_names[0]].append(_amount)
                 if self.negative_names[0] != self.positive_names[0]:
                     planned[self.negative_names[0]].append(0)
-            planned['description'].append(PREDICTED_BALANCE)
+            planned['description'].append(_description)
             planned['code'].append(_code)
 
         for description, transactions in yearly_transactions.items():
@@ -535,7 +535,7 @@ class Account:
                     f"{str(first_day.year + ix)}-{'0' * (planned_month < 10)}{transactions[1]}"
                 )
                 if first_day < planned_date < last_day:
-                    _add_to_planned(planned_date, amount, transactions[2])
+                    _add_to_planned(planned_date, amount, transactions[2], description)
 
         for description, transactions in monthly_transactions.items():
             year_carry_over = 0
@@ -551,7 +551,7 @@ class Account:
 
                 if first_day < planned_date < last_day:
                     amount = transactions[0]
-                    _add_to_planned(planned_date, amount, transactions[2])
+                    _add_to_planned(planned_date, amount, transactions[2], description)
 
         for description, transactions in unique_transactions.items():
             if isinstance(transactions[0], list):
@@ -572,7 +572,7 @@ class Account:
                         if self.negative_names[0] != self.positive_names[0]:
                             planned[self.negative_names[0]].append(0)
                     planned['date'].append(pd.to_datetime(planned_date))
-                    planned['description'].append(PREDICTED_BALANCE)
+                    planned['description'].append(description)
                     planned['code'].append(code)
 
         keys_to_pop = list()

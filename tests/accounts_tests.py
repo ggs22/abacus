@@ -53,7 +53,7 @@ if __name__ == "__main__":
             (accounts['NationalBankOP'], MonteCarloStrategy(), pred_args),
             (accounts['Paul'], PlannedTransactionsStrategy(), pred_args),
             (accounts['CIBC'], MonteCarloStrategy(), pred_args),
-            (accounts['WealthSimpleOP'], PlannedTransactionsStrategy(), pred_args),
+            (accounts['WealthSimpleOP'], PlannedTransactionsStrategy(), pred_args | {"simulation_date": "2025-03-01"}),
             (accounts['WealthSimpleTFSA'], PlannedTransactionsStrategy(), pred_args),
             (accounts['WealthSimpleFHSA'], PlannedTransactionsStrategy(), pred_args),
             (accounts['WealthSimpleCrypto'], PlannedTransactionsStrategy(), pred_args),
@@ -83,7 +83,7 @@ if __name__ == "__main__":
 
         total_offset = accounts["NationalBankPR"].current_balance
         total_offset += accounts["Paul"].current_balance
-        accounts.plot_forecasts(forecasts=forecasts, figure_name=fig_name, show_total=True, total_offset=-total_offset)
+        accounts.plot_forecasts(forecasts=loan_payment_forecast, figure_name=fig_name, show_total=True, total_offset=-total_offset)
 
     start_date = dt.date(dt.datetime.today().year, dt.datetime.today().month, 1)
     for i in range(0, 6):

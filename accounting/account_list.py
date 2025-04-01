@@ -239,6 +239,30 @@ class AccountsList:
                 filtered_data[account.name] = data
         return filtered_data
 
+    def filter_by_description(self, description: str, start_date: str = "", end_date: str = "") -> Dict[str, pd.DataFrame]:
+        filtered_data = dict()
+        for account in self:
+            data = account.filter_by_description(description=description, start_date=start_date, end_date=end_date)
+            if data is not None:
+                filtered_data[account.name] = data
+        return filtered_data
+
     def export(self) -> None:
         for account in self:
             account.export()
+
+    def interactive_codes_update(self):
+        for account in self:
+            account.interactive_codes_update()
+
+    def save(self) -> None:
+        for account in self:
+            account.save()
+
+    def get_planned_transactions(self, start_date: str = "", predicted_days: int = 365) -> Dict[str, pd.DataFrame]:
+        planned_transactions = dict()
+        for account in self:
+            data = account.get_planned_transactions(start_date, predicted_days)
+            if data is not None:
+                planned_transactions[account.name] = data
+        return planned_transactions
