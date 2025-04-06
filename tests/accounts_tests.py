@@ -4,8 +4,8 @@ import matplotlib.pyplot as plt
 
 from accounting import AccountsList, AccountFactory
 from accounting.forecast_strategies import (
-    PlannedTransactionsStrategy, MonteCarloStrategy, FixedLoanPaymentForecastStrategy,
-    CreditCardPaymentForecastStrategy, RequestedForecastList, ForecastFactory
+    MeanTransactionsStrategy, MonteCarloStrategy, FixedLoanPaymentForecastStrategy,
+    CreditCardPaymentForecastStrategy, RequestedForecastList, ForecastFactory, PlannedTransactionsStrategy
 )
 
 account_factory: AccountFactory = AccountFactory()
@@ -21,14 +21,14 @@ if __name__ == "__main__":
     #     account.histplot('2023')
     #
 
-    accounts.plot(fig_name=fig_name)
+    # accounts.plot(fig_name=fig_name)
 
-    # open_accounts = list()
-    # for account in accounts:
-    #     if account.status == "OPEN":
-    #         open_accounts.append(account)
-    # open_accounts = AccountsList(open_accounts)
-    # open_accounts.plot(fig_name=fig_name)
+    open_accounts = list()
+    for account in accounts:
+        if account.status == "OPEN":
+            open_accounts.append(account)
+    open_accounts = AccountsList(open_accounts)
+    open_accounts.plot(fig_name=fig_name)
 
     # TODO: implemented outliers-resilient stats
     # TODO: export data and re-import from csv (because of header=0 some first lines are missing),
@@ -51,13 +51,13 @@ if __name__ == "__main__":
 
         requested_forecasts: RequestedForecastList = [
             (accounts['NationalBankOP'], MonteCarloStrategy(), pred_args),
-            (accounts['Paul'], PlannedTransactionsStrategy(), pred_args),
+            (accounts['Paul'], MeanTransactionsStrategy(), pred_args),
             (accounts['CIBC'], MonteCarloStrategy(), pred_args),
-            (accounts['WealthSimpleOP'], PlannedTransactionsStrategy(), pred_args | {"simulation_date": "2025-03-01"}),
-            (accounts['WealthSimpleTFSA'], PlannedTransactionsStrategy(), pred_args),
-            (accounts['WealthSimpleFHSA'], PlannedTransactionsStrategy(), pred_args),
-            (accounts['WealthSimpleCrypto'], PlannedTransactionsStrategy(), pred_args),
-            (accounts['IBKRCash'], PlannedTransactionsStrategy(), pred_args),
+            (accounts['WealthSimpleOP'], MeanTransactionsStrategy(), pred_args | {"simulation_date": "2025-03-01"}),
+            (accounts['WealthSimpleTFSA'], MeanTransactionsStrategy(), pred_args),
+            (accounts['WealthSimpleFHSA'], MeanTransactionsStrategy(), pred_args),
+            (accounts['WealthSimpleCrypto'], MeanTransactionsStrategy(), pred_args),
+            (accounts['IBKRCash'], MeanTransactionsStrategy(), pred_args),
             (accounts['NationalBankPR'], PlannedTransactionsStrategy(), pred_args)
                      ]
 
@@ -69,9 +69,9 @@ if __name__ == "__main__":
              {"op_forecast": forecasts['NationalBankOP'],
               "loan_account": accounts['NationalBankPR'],
               "loan_forecast": forecasts['NationalBankPR'],
-              "loan_rate": 0.059,
+              "loan_rate": 0.0545,
               "day_of_month": 1,
-              "payment_amount": 300}),
+              "payment_amount": 500}),
             (accounts['NationalBankOP'],
              CreditCardPaymentForecastStrategy(),
              {"op_forecast": forecasts['NationalBankOP'],

@@ -240,6 +240,36 @@ class PlannedTransactionsStrategy(ForecastStrategy):
     def predict(self,
                 account: Account,
                 predicted_days: int,
+                balance_offset: float = 0.,
+                simulation_date: str = "",
+                **kwargs) -> pd.DataFrame | None:
+
+        planned_transations: pd.DataFrame | None = account.get_planned_transactions(start_date=simulation_date,
+                                                                                    predicted_days=predicted_days)
+        bal_at_sim_date = account.get_balance_at_date(date=simulation_date)
+
+        pred = planned_transations
+
+        pred.sort_values(by='date', inplace=True)
+        pred.reset_index(drop=True, inplace=True)
+        if account.positive_names[0] != account.negative_names[0]:
+            cols = [account.positive_names[0], account.negative_names[0]]
+        else:
+            cols = [account.positive_names[0]]
+        pred[account.balance_column_name] = ((pred.loc[:, cols]).sum(axis=1).cumsum() +
+                                             balance_offset +
+                                             bal_at_sim_date)
+
+        pred = pred[[*pred.columns[0:-2:].tolist(), pred.columns[-1], pred.columns[-2]]]
+
+        return pred
+
+
+class MeanTransactionsStrategy(ForecastStrategy):
+
+    def predict(self,
+                account: Account,
+                predicted_days: int,
                 stats: AccountStats | None = None,
                 balance_offset: float = 0.,
                 simulation_date: str = "",
@@ -424,23 +454,23 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
 
         del idx
 
+        shifted_loan_pred = copy(loan_forecast.forecast_data)
+        shifted_loan_pred = _apply_date_shift(shifted_loan_pred)
+
+        join_view = pd.concat([historical_loan_data, shifted_loan_pred])
+        join_view = _apply_date_shift(join_view)
+        join_view.sort_values(by='date', inplace=True, ignore_index=True)
+        join_view['year'] = join_view.date.apply(lambda d: pd.to_datetime(d).date().year)
+        join_view['month'] = join_view.date.apply(lambda d: pd.to_datetime(d).date().month)
+        join_view['daily_interest'] = (
+                join_view['date_diff'] * abs(join_view[loan_account.balance_column_name]) * (loan_rate / 365.25)
+        )
+
+        grouped_join_view = join_view.loc[:, ["year", "month", "daily_interest"]].groupby(by=["year", "month"]).sum()
+        grouped_join_view['daily_interest'] = grouped_join_view['daily_interest'].shift()
+        grouped_join_view.replace(np.nan, 0, inplace=True)
+
         for year, month in sorted(date_month_pairs):
-
-            shifted_loan_pred = copy(loan_forecast.forecast_data)
-            shifted_loan_pred = _apply_date_shift(shifted_loan_pred)
-
-            join_view = pd.concat([historical_loan_data, shifted_loan_pred])
-            join_view = _apply_date_shift(join_view)
-            join_view.sort_values(by='date', inplace=True, ignore_index=True)
-            join_view['year'] = join_view.date.apply(lambda d: pd.to_datetime(d).date().year)
-            join_view['month'] = join_view.date.apply(lambda d: pd.to_datetime(d).date().month)
-            join_view['daily_interest'] = (
-                    join_view['date_diff'] * abs(join_view[loan_account.balance_column_name]) * (loan_rate / 365.25)
-            )
-
-            grouped_join_view = join_view.loc[:, ["year", "month", "daily_interest"]].groupby(by=["year", "month"]).sum()
-            grouped_join_view['daily_interest'] = grouped_join_view['daily_interest'].shift()
-            grouped_join_view.replace(np.nan, 0, inplace=True)
 
             op_internal_transactions = {col: list() for col in op_forecast.forecast_data.columns}
             loan_internal_transactions = {col: list() for col in loan_forecast.forecast_data.columns}
@@ -467,7 +497,7 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
                     op_internal_transactions['description'].append("predicted interest BNC PR")
                     if account.positive_names[0] != account.negative_names[0]:
                         op_internal_transactions[account.positive_names[0]].append(0)
-                        op_internal_transactions[account.negative_names[0]].append(-interest_amount)
+                        op_internal_transactions[account.negative_names[0]].append(interest_amount)
                     else:
                         op_internal_transactions[account.positive_names[0]].append(-interest_amount)
                     op_internal_transactions['code'].append('internal_cashflow')
@@ -478,33 +508,42 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
                     op_internal_transactions['description'].append("predicted capital paid BNC PR")
                     if account.positive_names[0] != account.negative_names[0]:
                         op_internal_transactions[account.positive_names[0]].append(0)
-                        op_internal_transactions[account.negative_names[0]].append(-(payment_amount - interest_amount))
+                        op_internal_transactions[account.negative_names[0]].append(payment_amount - interest_amount)
                     else:
                         op_internal_transactions[account.positive_names[0]].append(-(payment_amount - interest_amount))
                     op_internal_transactions['code'].append('internal_cashflow')
                     op_internal_transactions[ITERATION].append(mc_iteration)
                     op_internal_transactions[account.balance_column_name].append(0)
 
-            if first_sim_date_loan <= transaction_date:
-                loan_internal_transactions['date'].append(transaction_date)
-                loan_internal_transactions['description'].append("predicred interest")
-                if account.positive_names[0] != account.negative_names[0]:
-                    loan_internal_transactions[account.positive_names[0]].append(interest_amount)
-                    loan_internal_transactions[account.negative_names[0]].append(-interest_amount)
-                else:
-                    loan_internal_transactions[account.positive_names[0]].append(0)
-                loan_internal_transactions['code'].append('internal_cashflow')
-                loan_internal_transactions[loan_account.balance_column_name].append(0)
+            # if first_sim_date_loan <= transaction_date:
+            loan_internal_transactions['date'].append(transaction_date)
+            loan_internal_transactions['description'].append("predicted interest")
+            if account.positive_names[0] != account.negative_names[0]:
+                loan_internal_transactions[account.positive_names[0]].append(0)
+                loan_internal_transactions[account.negative_names[0]].append(interest_amount)
+            else:
+                loan_internal_transactions[account.positive_names[0]].append(-interest_amount)
+            loan_internal_transactions['code'].append('internal_cashflow')
 
-                loan_internal_transactions['date'].append(transaction_date)
-                loan_internal_transactions['description'].append("predicted capital paid")
-                if account.positive_names[0] != account.negative_names[0]:
-                    loan_internal_transactions[account.positive_names[0]].append((payment_amount-interest_amount))
-                    loan_internal_transactions[account.negative_names[0]].append(0)
-                else:
-                    loan_internal_transactions[account.positive_names[0]].append((payment_amount - interest_amount))
-                loan_internal_transactions['code'].append('internal_cashflow')
-                loan_internal_transactions[loan_account.balance_column_name].append(0)
+            if transaction_date <= loan_account.most_recent_date:
+                latest_bal = loan_account.get_balance_at_date(date=transaction_date)
+            else:
+                idx = max(np.where(loan_forecast.forecast_data['solde'].diff() > 0)[0])
+                latest_bal = loan_forecast.forecast_data.loc[idx, 'solde'].item()
+
+            loan_internal_transactions[loan_account.balance_column_name].append(latest_bal)
+
+            loan_internal_transactions['date'].append(transaction_date)
+            loan_internal_transactions['description'].append("predicted capital paid")
+            capital_paid = payment_amount-interest_amount
+            if account.positive_names[0] != account.negative_names[0]:
+                loan_internal_transactions[account.positive_names[0]].append(capital_paid)
+                loan_internal_transactions[account.negative_names[0]].append(0)
+            else:
+                loan_internal_transactions[account.positive_names[0]].append(capital_paid)
+            loan_internal_transactions['code'].append('internal_cashflow')
+
+            loan_internal_transactions[loan_account.balance_column_name].append(latest_bal + capital_paid)
 
             self._fill_dictionary(op_internal_transactions)
             op_internal_transactions = pd.DataFrame(op_internal_transactions)
@@ -526,13 +565,16 @@ class FixedLoanPaymentForecastStrategy(ForecastStrategy):
                 cols = [loan_account.positive_names[0], loan_account.negative_names[0]]
             else:
                 cols = [loan_account.positive_names[0]]
-            loan_forecast.forecast_data[loan_account.balance_column_name] = (
-                    loan_forecast.forecast_data.loc[:, cols].cumsum().sum(axis=1) + loan_forecast.forecast_data.loc[0, loan_account.balance_column_name]
-            )
             cols = [ITERATION, *cols]
             op_forecast.forecast_data[account.balance_column_name] = (
                     (op_forecast.forecast_data.loc[:, cols].groupby(by=ITERATION).cumsum().sum(axis=1)) + op_forecast.forecast_data.loc[0, account.balance_column_name]
             )
+
+        # we populate the loan forecast with dummy transactions to allow for the righ date-span to be generated.
+        # Here we must clean up those dummy transactions
+        idx = (loan_forecast.forecast_data.loc[:, loan_account.numerical_names] == 0).all(axis=1)
+        loan_forecast.forecast_data.drop(labels=loan_forecast.forecast_data[idx].index, inplace=True, axis=0)
+        loan_forecast.forecast_data.reset_index(drop=True, inplace=True)
 
         return {account.name: op_forecast,
                 loan_account.name: loan_forecast}
