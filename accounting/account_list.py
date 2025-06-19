@@ -253,6 +253,7 @@ class AccountsList:
 
     def interactive_codes_update(self):
         for account in self:
+            print(account)
             account.interactive_codes_update()
 
     def save(self) -> None:

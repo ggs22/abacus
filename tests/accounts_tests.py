@@ -21,20 +21,20 @@ if __name__ == "__main__":
     #     account.histplot('2023')
     #
 
-    # accounts.plot(fig_name=fig_name)
+    accounts.plot(fig_name=fig_name)
 
-    open_accounts = list()
-    for account in accounts:
-        if account.status == "OPEN":
-            open_accounts.append(account)
-    open_accounts = AccountsList(open_accounts)
-    open_accounts.plot(fig_name=fig_name)
+    # open_accounts = list()
+    # for account in accounts:
+    #     if account.status == "OPEN":
+    #         open_accounts.append(account)
+    # open_accounts = AccountsList(open_accounts)
+    # open_accounts.plot(fig_name=fig_name)
 
     # TODO: implemented outliers-resilient stats
     # TODO: export data and re-import from csv (because of header=0 some first lines are missing),
     #  then lookup for duplicate lines and re-assign code from previous exports
 
-    sim_dates = [""]
+    sim_dates = ["", "2025-02-28"]
     forecasts_factory = ForecastFactory()
 
     for sim_date in sim_dates:
