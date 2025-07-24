@@ -2,7 +2,9 @@ import datetime
 import logging
 import pickle
 import random
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy, copy
+from multiprocessing import cpu_count
 from pathlib import Path
 from typing import Iterable, List, Any, Dict, Tuple
 
@@ -416,6 +418,226 @@ class MonteCarloStrategy(ForecastStrategy):
                                              bal_at_sim_date)
         del cols
 
+        return pred
+
+
+def _monte_carlo_worker(worker_args: tuple) -> Dict[str, List[Any]]:
+    """
+    Worker function for parallel Monte Carlo simulation.
+    
+    Args:
+        worker_args: Tuple containing (iteration_start, iteration_end, predicted_days, 
+                    stats_dict, planned_codes, balance_offset, column_names, account_info)
+    
+    Returns:
+        Dictionary containing simulation results for assigned iterations
+    """
+    (iteration_start, iteration_end, predicted_days, stats_dict, planned_codes, 
+     balance_offset, column_names, account_info) = worker_args
+    
+    # Reconstruct needed data structures
+    pred_l: Dict[str, List[Any]] = {col_name: list() for col_name in column_names}
+    pred_l[ITERATION] = list()
+    
+    positive_names, negative_names = account_info['positive_names'], account_info['negative_names']
+    
+    # Set random seed for reproducibility (optional)
+    random.seed(iteration_start)
+    np.random.seed(iteration_start)
+    
+    for mc_iteration in range(iteration_start, iteration_end):
+        # Add initial balance offset
+        pred_l['date'].append(0)
+        pred_l['description'].append(f"{PREDICTED_BALANCE}_reported_balance")
+        pred_l['code'].append("other")
+        pred_l[ITERATION].append(mc_iteration)
+        
+        # Handle amount allocation
+        neg = balance_offset <= 0
+        pred_l[negative_names[0]].append(balance_offset * neg + 0 * (not neg))
+        if positive_names[0] != negative_names[0]:
+            pred_l[positive_names[0]].append(0 * neg + balance_offset * (not neg))
+        
+        # Simulate transactions for each day
+        for days_ix in range(predicted_days):
+            for unplanned_index in stats_dict:
+                if unplanned_index in planned_codes:
+                    continue
+                    
+                stats_entry = stats_dict[unplanned_index]
+                dice = random.random() <= stats_entry['daily_prob']
+                if not dice:
+                    continue
+
+                amount = random.gauss(mu=stats_entry['mean'], sigma=stats_entry['std'])
+                if amount != 0:
+                    pred_l['date'].append(days_ix + 1)
+                    pred_l['description'].append(f"{PREDICTED_BALANCE}_{unplanned_index}")
+                    pred_l['code'].append("other")
+                    pred_l[ITERATION].append(mc_iteration)
+                    
+                    # Handle amount allocation
+                    neg = amount <= 0
+                    pred_l[negative_names[0]].append(amount * neg + 0 * (not neg))
+                    if positive_names[0] != negative_names[0]:
+                        pred_l[positive_names[0]].append(0 * neg + amount * (not neg))
+    
+    return pred_l
+
+
+class ParallelMonteCarloStrategy(ForecastStrategy):
+    """
+    Parallelized implementation of Monte Carlo forecasting strategy.
+    
+    This strategy distributes Monte Carlo iterations across multiple processes
+    to significantly improve performance for large simulation counts.
+    """
+    
+    def __init__(self, max_workers: int = None):
+        """
+        Initialize parallel Monte Carlo strategy.
+        
+        Args:
+            max_workers: Maximum number of worker processes. Defaults to CPU count.
+        """
+        self.max_workers = max_workers or cpu_count()
+    
+    def predict(self,
+                account: Account,
+                predicted_days: int,
+                stats: AccountStats | None = None,
+                simulation_date: str = "",
+                force_new: bool = False,
+                **kwargs) -> pd.DataFrame:
+        """
+        Generate Monte Carlo forecast using parallel processing.
+        
+        Args:
+            account: Account to forecast
+            predicted_days: Number of days to predict
+            stats: Account statistics (optional)
+            simulation_date: Starting date for simulation
+            force_new: Force new calculation instead of loading cached results
+            **kwargs: Additional arguments including mc_iterations, balance_offset
+            
+        Returns:
+            DataFrame containing Monte Carlo simulation results
+        """
+        
+        planned_transactions: pd.DataFrame | None = account.get_planned_transactions(
+            start_date=simulation_date, predicted_days=predicted_days)
+        
+        if planned_transactions is not None:
+            planned_codes = list(planned_transactions.code.unique())
+        else:
+            planned_codes = list()
+        planned_codes.extend(['na', 'internal_cashflow', 'credit', 'other'])
+
+        def _predict(stats: AccountStats | None = None) -> pd.DataFrame | None:
+            """Inner prediction function that handles parallelization."""
+            
+            balance_offset = kwargs.get("balance_offset", 0)
+            mc_iterations = kwargs.get('mc_iterations', 100)
+            
+            # Prepare data for worker processes
+            stats_dict = {
+                index: {
+                    'daily_prob': stats.loc[index]['daily_prob'],
+                    'mean': stats.loc[index]['mean'],
+                    'std': stats.loc[index]['std']
+                }
+                for index in stats.index if index not in planned_codes
+            }
+            
+            account_info = {
+                'positive_names': account.positive_names,
+                'negative_names': account.negative_names
+            }
+            
+            # Determine chunk size for parallel processing
+            chunk_size = max(1, mc_iterations // self.max_workers)
+            worker_args = []
+            
+            for i in range(0, mc_iterations, chunk_size):
+                iteration_end = min(i + chunk_size, mc_iterations)
+                worker_args.append((
+                    i, iteration_end, predicted_days, stats_dict, planned_codes,
+                    balance_offset, account.columns_names, account_info
+                ))
+            
+            # Execute parallel processing
+            all_results = []
+            total_iterations = mc_iterations * predicted_days
+            
+            with ProcessPoolExecutor(max_workers=self.max_workers) as executor:
+                with tqdm(total=total_iterations, 
+                         desc=f"{self.__class__.__name__} iterating {account.name}") as pbar:
+                    
+                    # Submit all tasks
+                    future_to_args = {
+                        executor.submit(_monte_carlo_worker, args): args 
+                        for args in worker_args
+                    }
+                    
+                    # Collect results as they complete
+                    for future in as_completed(future_to_args):
+                        args = future_to_args[future]
+                        try:
+                            result = future.result()
+                            all_results.append(result)
+                            # Update progress bar based on iterations completed
+                            iterations_in_chunk = (args[1] - args[0]) * predicted_days
+                            pbar.update(iterations_in_chunk)
+                        except Exception as exc:
+                            self.logger.error(f'Worker generated an exception: {exc}')
+                            raise exc
+            
+            # Combine results from all workers
+            combined_pred_l: Dict[str, List[Any]] = {col_name: list() for col_name in account.columns_names}
+            combined_pred_l[ITERATION] = list()
+            
+            for result in all_results:
+                for key, values in result.items():
+                    combined_pred_l[key].extend(values)
+            
+            # Fill missing values and convert to DataFrame
+            self._fill_dictionary(combined_pred_l)
+            pred_df = pd.DataFrame(combined_pred_l)
+            
+            return pred_df
+
+        # Use the prediction wrapper to handle caching
+        pred = self._prediction_wraper(
+            account=account,
+            predict_func=_predict,
+            stats=stats,
+            simulation_date=simulation_date,
+            force_new=force_new
+        )
+
+        # Post-process results (same as original MonteCarloStrategy)
+        bal_at_sim_date = account.get_balance_at_date(date=simulation_date)
+        
+        if planned_transactions is not None:
+            mc_iterations = kwargs.get('mc_iterations', 100)
+            planned_transactions_list = list()
+            for i in range(0, mc_iterations):
+                planned_transactions[ITERATION] = i
+                planned_transactions_list.append(deepcopy(planned_transactions))
+            pred = pd.concat([pred, *planned_transactions_list], axis=0)
+            
+        pred.sort_values(by=[ITERATION, 'date'], inplace=True)
+        pred.reset_index(drop=True, inplace=True)
+        
+        if account.positive_names[0] != account.negative_names[0]:
+            cols = [ITERATION, account.positive_names[0], account.negative_names[0]]
+        else:
+            cols = [ITERATION, account.positive_names[0]]
+
+        pred[account.balance_column_name] = (
+            pred.loc[:, cols].groupby(by=ITERATION).cumsum().sum(axis=1) + bal_at_sim_date
+        )
+        
         return pred
 
 
