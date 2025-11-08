@@ -91,6 +91,117 @@ def _compute_daily_std(daily_ave: pd.Series, period_data: pd.DataFrame, delta_da
     res_daily_std = pd.Series(res_daily_std)
     return res_daily_std
 
+def _compute_transaction_order(df, balance_col, positive_cols, negative_cols):
+    """
+    Compute transaction order within each date group to maintain balance continuity.
+
+    Returns: Array of indices representing the correct order
+    """
+    import numpy as np
+
+    # Sort by date first
+    df_sorted = df.sort_values('date').copy()
+    ordered_indices = []
+
+    # Group by date and process each group
+    for date, group in df_sorted.groupby('date'):
+        group_indices = group.index.tolist()
+
+        if len(group_indices) == 1:
+            ordered_indices.extend(group_indices)
+            continue
+
+        # Get the starting balance (from previous day's last transaction)
+        if len(ordered_indices) > 0:
+            prev_balance = df.loc[ordered_indices[-1], balance_col]
+        else:
+            prev_balance = 0  # or initial balance
+
+        # Find correct ordering for this date's transactions
+        correct_order = _find_valid_transaction_order(
+            df, group_indices, prev_balance, balance_col, positive_cols, negative_cols
+        )
+        ordered_indices.extend(correct_order)
+
+    return np.array(ordered_indices)
+
+def _find_valid_transaction_order(df, indices, starting_balance, balance_col, pos_cols, neg_cols):
+    """Find the transaction order that maintains balance continuity."""
+
+    if len(indices) <= 1:
+        return indices
+
+    # For small groups, try all permutations
+    if len(indices) <= 4:  # Factorial grows quickly
+        return _find_order_by_permutation(df, indices, starting_balance, balance_col, pos_cols, neg_cols)
+
+    # For larger groups, use greedy approach
+    return _find_order_greedy(df, indices, starting_balance, balance_col, pos_cols, neg_cols)
+
+def _find_order_by_permutation(df, indices, starting_balance, balance_col, pos_cols, neg_cols):
+    """Try all permutations to find valid order (for small groups)."""
+    from itertools import permutations
+
+    for perm in permutations(indices):
+        if _is_valid_order(df, perm, starting_balance, balance_col, pos_cols, neg_cols):
+            return list(perm)
+
+    # Fallback: return original order if no valid permutation found
+    return indices
+
+def _find_order_greedy(df, indices, starting_balance, balance_col, pos_cols, neg_cols):
+    """Greedy approach: build order transaction by transaction."""
+    remaining = set(indices)
+    ordered = []
+    current_balance = starting_balance
+
+    while remaining:
+        # Find next transaction that makes balance equation valid
+        best_candidate = None
+
+        for candidate in remaining:
+            transaction_amount = (
+                    df.loc[candidate, pos_cols].sum() -
+                    df.loc[candidate, neg_cols].sum()
+            )
+            expected_balance = current_balance + transaction_amount
+            actual_balance = df.loc[candidate, balance_col]
+
+            if abs(expected_balance - actual_balance) < 0.01:  # Allow small floating point errors
+                best_candidate = candidate
+                break
+
+        if best_candidate is not None:
+            ordered.append(best_candidate)
+            remaining.remove(best_candidate)
+            current_balance = df.loc[best_candidate, balance_col]
+        else:
+            # Fallback: take any remaining transaction
+            fallback = remaining.pop()
+            ordered.append(fallback)
+            current_balance = df.loc[fallback, balance_col]
+
+    return ordered
+
+def _is_valid_order(df, order, starting_balance, balance_col, pos_cols, neg_cols):
+    """Check if a transaction order maintains balance continuity."""
+    current_balance = starting_balance
+
+    for idx in order:
+        transaction_amount = (
+                df.loc[idx, pos_cols].sum() -
+                df.loc[idx, neg_cols].sum()
+        )
+        expected_balance = current_balance + transaction_amount
+        actual_balance = df.loc[idx, balance_col]
+
+        if abs(expected_balance - actual_balance) > 0.01:
+            return False
+
+        current_balance = actual_balance
+
+    return True
+
 
 class Account:
 
@@ -129,10 +240,19 @@ class Account:
         else:
             # the following objects will be serialized by the self.save() function
             self.processed_data_files = set()
-            self.transaction_data: pd.DataFrame = None
+            self.transaction_data: pd.DataFrame | None = None
 
         # load raw data
         self.import_csv_files()
+
+        if self.has_balance_column:
+            sorted_idx = _compute_transaction_order(self.transaction_data,
+                                                    self.balance_column_name,
+                                                    self.positive_names,
+                                                    self.negative_names)
+            self.transaction_data = self.transaction_data.loc[sorted_idx, :]
+            self.transaction_data.reset_index(drop=True, inplace=True)
+
 
     def __repr__(self):
         pres = f"{self.name}\n"
@@ -192,7 +312,13 @@ class Account:
     @property
     def has_balance_column(self) -> bool:
         balance_in_conf = self.conf.balance_column is not None
-        balance_in_headers = False if not balance_in_conf else self.conf.balance_column[0] in self.transaction_data.columns
+        if not balance_in_conf:
+            balance_in_headers = False
+        elif self.transaction_data is not None and self.conf.balance_column[0] in self.transaction_data.columns:
+            balance_in_headers = True
+        else:
+            balance_in_headers = False
+
         return balance_in_conf and balance_in_headers
 
     @property
@@ -244,12 +370,16 @@ class Account:
                 self.processed_data_files.add(file_hash)
                 self.logger.info(f"Importing new data from {csv_file.name} for {self.name}")
 
-                cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
-                                        encoding=self.conf.encoding,
-                                        names=self.conf.columns_names,
-                                        sep=self.conf.separator,
-                                        skip_blank_lines=True,
-                                        header=0 if self.conf.has_header_row else None)
+                try:
+                    cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
+                                            encoding=self.conf.encoding,
+                                            names=self.conf.columns_names,
+                                            sep=self.conf.separator,
+                                            skip_blank_lines=True,
+                                            header=0 if self.conf.has_header_row else None)
+                except pd.errors.ParserError as e:
+                    print(f"Couldn't parse {csv_file}:\n")
+                    raise e
 
                 # Check if there is a filter to apply on the rows:
                 if self.conf.rows_selection is not None:
@@ -262,13 +392,16 @@ class Account:
                 if 'date' not in cash_flow.columns:
                     raise ValueError(f"The Account class expects a column named 'date'! Got: {cash_flow.columns}")
                 else:
-                    cash_flow['date'] = pd.to_datetime(cash_flow['date'], format=self.conf.date_format)
+                    try:
+                        cash_flow['date'] = pd.to_datetime(cash_flow['date'], format=self.conf.date_format)
+                    except Exception as e:
+                        raise RuntimeError(f"Problem converting string to date in {csv_file} for {self.name}: {e}")
 
                 for numerical_column in self.conf.numerical_columns:
                     col_name, col_sign = numerical_column[0], numerical_column[1]
                     cash_flow[col_name] = pd.to_numeric(cash_flow[col_name])
 
-                # Automatically assign commone transaction code
+                # Automatically assign common transaction code
                 cash_flow['code'] = get_common_codes(cash_flow).to_numpy()
                 na_idx = cash_flow['code'] == 'na'
                 cash_flow.loc[na_idx, 'code'] = self._get_account_specific_codes(cash_flow[na_idx])
@@ -280,7 +413,7 @@ class Account:
                 cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')],
                                           inplace=True)
                 cash_flow.sort_values(by=list(self.conf.sorting_order),
-                                      ascending=list(self.conf.sorting_ascendence),
+                                      ascending=list(self.conf.sorting_ascendancy),
                                       inplace=True)
                 cash_flow.reset_index(drop=True, inplace=True)
 

@@ -8,9 +8,9 @@ def get_period_tuple(date_str: str) -> Tuple[datetime.date, str]:
     """returns date string, date format and period unit (day, month or year)"""
 
     period_tuple = None
-    year_pattern = re.compile(pattern="(\d{4})$")
-    month_pattern = re.compile(pattern="(\d{4})([ _/-])(\d{1,2})$")
-    day_pattern = re.compile(pattern="(\d{4})([ _/-])(\d{2})([ _/-])(\d{1,2})$")
+    year_pattern = re.compile(pattern=r"(\d{4})$")
+    month_pattern = re.compile(pattern=r"(\d{4})([ _/-])(\d{1,2})$")
+    day_pattern = re.compile(pattern=r"(\d{4})([ _/-])(\d{2})([ _/-])(\d{1,2})$")
     m = day_pattern.match(date_str)
     if m:
         period_tuple = datetime.datetime.strptime(f"{m[1]}-{m[3]}-{m[5]}", "%Y-%m-%d").date(), 'day'

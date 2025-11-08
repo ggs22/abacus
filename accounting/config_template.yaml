@@ -13,7 +13,7 @@ has_header_row: False
 # Name of the columns in the csv file (assign them if not there).
 columns_names: [null]
 sorting_order: [null]
-sorting_ascendence: [False]
+sorting_ascendancy: [False]
 
 # Names of the numerical columns with their sign:
 # -1 for negative with negative sign, 1 for positive, mixed or negative-without-negative sign columns.

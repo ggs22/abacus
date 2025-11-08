@@ -74,7 +74,7 @@ class AccountsList:
             total.loc[ix, col] = total.loc[ix, col].ffill()
 
             if acc.status == "OPEN":
-                total[col].ffill(inplace=True)
+                total[col] = total[col].ffill()
 
         total['balance_total'] = total.sum(axis=1)
 
@@ -192,7 +192,8 @@ class AccountsList:
     def barplot(self,
                 start_date: str,
                 end_date: str = "",
-                excluded_codes: Sequence[str] = ('internal_cashflow', 'credit')):
+                excluded_codes: Sequence[str] = ('internal_cashflow', 'credit', 'expense_account'),
+                fig_name: str = ""):
         data_df = list()
         overall_len = 0
         for acc in self:
@@ -217,8 +218,8 @@ class AccountsList:
             income = data[data > 0].sum()
             expenses = data[data <= 0].sum()
 
-            plt.figure(num=f"All accounts barplot - {start_date}")
-            plt.title(label=f"All accounts barplot - {start_date}\n"
+            plt.figure(num=f"Accounts barplot - {start_date}{(' - ' + fig_name) * (fig_name != "")}")
+            plt.title(label=f"Accounts barplot - {start_date}{(' - ' + fig_name) * (fig_name != "")}\n"
                             f"in: {income: .2f}, out: {expenses: .2f}, bal: {income + expenses: .2f}")
 
             colors = list()

@@ -1,5 +1,6 @@
 import logging
 import shutil
+from enum import StrEnum
 from pathlib import Path
 from typing import List
 
@@ -17,10 +18,35 @@ accounts = list()
 
 
 class AccountFactory:
+
+    class AccountGroups(StrEnum):
+        PERSONAL = "Personal"
+        DESJARDINS = "Desjardins"
+        NATIONALBANK = "NationalBank"
+        WEALTHSIMPLE = "WealthSimple"
+        ORDIAL = "Ordial"
+
     def __init__(self):
         self.accounts_dir: Path = pu.accounts_dir
+        self.accounts = self._load_accounts()
 
-    def load_accounts(self) -> AccountsList:
+    def get_account_groups(self):
+        return  self.AccountGroups
+
+    def get_account_from_group(self, group: AccountGroups) -> AccountsList:
+        accounts_group = list()
+        for acc in accounts:
+            if group != self.AccountGroups.PERSONAL:
+                if group.lower() in acc.name.lower():
+                    accounts_group.append(acc)
+            elif group == self.AccountGroups.PERSONAL:
+                if not 'ordial' in acc.name.lower():
+                    accounts_group.append(acc)
+            else:
+                raise ValueError(f"The parameter group muse belong to the following enum: {self.AccountGroups}")
+        return AccountsList(accounts_group)
+
+    def _load_accounts(self) -> AccountsList:
         # Dynamically load Account objects int the accounting module from the corresponding directories
         accounts_directories = [file for file in self.accounts_dir.glob('*/')]
         accounts_directories.sort()
@@ -37,7 +63,7 @@ class AccountFactory:
                 accounts.append(globals()[fname])
         return AccountsList(accounts=accounts)
 
-    def create_new_account(self) -> List[Account]:
+    def create_new_account(self) -> AccountsList:
         template_dir = self.accounts_dir.joinpath('_template_account')
         account_name = input("Enter the name of the new account:\n")
         dest_dir = self.accounts_dir.joinpath(account_name.lower())
@@ -46,7 +72,7 @@ class AccountFactory:
         config = OmegaConf.load(dest_dir.joinpath('config.yaml'))
         config['name'] = account_name
         OmegaConf.save(config, dest_dir.joinpath('config.yaml'))
-        return self.load_accounts()
+        return self._load_accounts()
 
     @staticmethod
     def add_account_property(accounts: AccountsList) -> None:
