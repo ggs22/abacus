@@ -1,41 +1,17 @@
 from typing import List, Dict, Sequence
 
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import plotly.colors
+import plotly.graph_objects as go
 
 from accounting.forecast_strategies import Forecast
-
 from accounting.Account import Account, _compute_daily_std
+from accounting.plotting import (plot_accounts_list, plot_cumulative_balances,
+                                 plot_forecasts, barplot)
 from utils.utils import mad
 
-
-def finalize_plot(plot_func: callable):
-    def plot_func_wraper(self, *args, **kwargs):
-        plot_func(self, *args, **kwargs)
-        plt.grid(visible=True)
-        plt.legend()
-
-    return plot_func_wraper
-
-
-def plot_forecast(forecast: Forecast,
-                  figure_name: str = "",
-                  c='b') -> None:
-
-    bal_col = forecast.account.balance_column_name
-    mean = forecast.forecast_data.loc[:, ['date', bal_col]].groupby(by='date').mean()
-    std = forecast.forecast_data.loc[:, ['date', bal_col]].groupby(by='date').std()
-    plt.figure(num=figure_name)
-    plt.plot(mean,
-             label="",
-             linestyle='--',
-             c=c)
-    plt.fill_between(x=mean.index,
-                     y1=(mean-std)[bal_col],
-                     y2=(mean+std)[bal_col],
-                     alpha=0.3,
-                     color=c)
+_COLORS = plotly.colors.qualitative.Dark24
 
 
 class AccountsList:
@@ -47,7 +23,7 @@ class AccountsList:
             self.accounts[account.name] = account
             self.__acclist__.append(account)
 
-        self.color = plt.cm.get_cmap('tab20')(len(accounts) + 1 % len(accounts))
+        self.color = _COLORS[(len(accounts) + 1) % len(_COLORS)]
 
     def __getitem__(self, ix: int | str) -> Account:
         if isinstance(ix, int):
@@ -130,107 +106,37 @@ class AccountsList:
 
         return stats
 
-    @finalize_plot
-    def plot(self, fig_name: str = "") -> None:
+    def plot(self, title: str = "Accounts") -> go.Figure:
+        return plot_accounts_list(self, title=title)
 
-        if fig_name == "":
-            fig_name = "Accounts plot"
+    def plot_cumulative_balances(self, accounts: List[Account],
+                                 title: str = "") -> go.Figure:
+        return plot_cumulative_balances(self, accounts=accounts, title=title)
 
-        for account in self:
-            account.plot(figure_name=fig_name)
-        total = self.balance_column
-
-        plt.plot(total['balance_total'], label="total balance")
-
-    @finalize_plot
-    def plot_cumulative_balances(self, accounts: List[Account], fig_name: str = "") -> None:
-
-        if fig_name == "":
-            fig_name = "Accounts plot"
-
-        total = self.get_balance_columns_sum(accounts)
-
-        label = "summed balance"
-        for account in accounts:
-            label += f" {account.name}\n"
-
-        plt.figure(num=fig_name)
-        plt.plot(total['balance_total'], label=label, c=self.color)
-
-    @finalize_plot
     def plot_forecasts(self,
                        forecasts: Dict[str, Forecast],
                        show_total: bool = True,
                        total_offset: float = 0.,
-                       figure_name: str = "") -> None:
-
-        mean_bal = list()
-        std_bal = list()
-
-        for account_name, forecast in forecasts.items():
-            forecast_data = forecast.forecast_data
-            bal_col = self[account_name].balance_column_name
-            mean_bal.append(forecast_data.loc[:, ['date', bal_col]].groupby(by='date').mean())
-            std_bal.append(forecast_data.loc[:, ['date', bal_col]].groupby(by='date').std())
-            plot_forecast(forecast=forecast, figure_name=figure_name, c=self.accounts[account_name].color)
-
-        if show_total:
-            total = pd.concat(mean_bal, axis=1)
-            total = total.ffill().dropna()
-            total_std = pd.concat(std_bal, axis=1)
-            total_std = total_std.ffill().dropna()
-            total['balance_total'] = total.sum(axis=1)
-            total['balance_total'] += total_offset
-            total_std['balance_std'] = total_std.std(axis=1)
-            plt.plot(total['balance_total'], linestyle="--", label="", c=self.color)
-            plt.fill_between(x=total.index,
-                             y1=total['balance_total']-total_std['balance_std'],
-                             y2=total['balance_total']+total_std['balance_std'],
-                             color=self.color,
-                             alpha=0.5)
+                       title: str = "") -> go.Figure:
+        return plot_forecasts(self, forecasts=forecasts, show_total=show_total,
+                              total_offset=total_offset, title=title)
 
     def barplot(self,
                 start_date: str,
                 end_date: str = "",
                 excluded_codes: Sequence[str] = ('internal_cashflow', 'credit', 'expense_account'),
-                fig_name: str = ""):
-        data_df = list()
-        overall_len = 0
-        for acc in self:
-            data, period_length = acc.get_period_data(start_date=start_date, end_date=end_date)
-            if data is not None:
-                overall_len = max(overall_len, period_length)
-                data: pd.DataFrame = data.groupby(by='code').sum(numeric_only=True)
-                data['total'] = (data.loc[:, acc.numerical_names] * acc.numerical_signs).sum(axis=1)
-                data.sort_values(by='total', ascending=False, inplace=True)
+                title: str = "") -> go.Figure:
+        return barplot(self, start_date=start_date, end_date=end_date,
+                       excluded_codes=excluded_codes, title=title)
 
-                data_df.append(data)
+    def filter_by_category(self, category: str) -> "AccountsList":
+        return AccountsList([acc for acc in self if acc.category == category])
 
-        if len(data_df) > 0:
-            data = pd.concat(data_df, axis=1).loc[:, ['total']].sum(axis=1)
-            data.sort_values(inplace=True, ascending=False)
+    def filter_by_family(self, family: str) -> "AccountsList":
+        return AccountsList([acc for acc in self if acc.family == family])
 
-            if len(excluded_codes) > 0:
-                for excluded_code in excluded_codes:
-                    if excluded_code in data.index.values:
-                        data.drop(labels=excluded_code, inplace=True)
-
-            income = data[data > 0].sum()
-            expenses = data[data <= 0].sum()
-
-            plt.figure(num=f"Accounts barplot - {start_date}{(' - ' + fig_name) * (fig_name != "")}")
-            plt.title(label=f"Accounts barplot - {start_date}{(' - ' + fig_name) * (fig_name != "")}\n"
-                            f"in: {income: .2f}, out: {expenses: .2f}, bal: {income + expenses: .2f}")
-
-            colors = list()
-            for amount in data:
-                color = (.75, 0, 0) if amount <= 0 else (0, .75, 0)
-                colors.append(color)
-            plt.barh(y=data.index, width=data, color=colors)
-            for stat in data.index:
-                plt.text(x=max(0, data[stat]) + 10,
-                         y=stat,
-                         s=f"{data[stat]: .2f} / {data[stat] / overall_len: .2f}")
+    def filter_by_institution(self, institution: str) -> "AccountsList":
+        return AccountsList([acc for acc in self if acc.institution == institution])
 
     def filter_by_code(self, code: str, start_date: str = "", end_date: str = "") -> Dict[str, pd.DataFrame]:
         filtered_data = dict()
@@ -256,6 +162,11 @@ class AccountsList:
         for account in self:
             print(account)
             account.interactive_codes_update()
+
+    def reload(self, new_accounts: "AccountsList") -> None:
+        self.accounts = new_accounts.accounts
+        self.__acclist__ = new_accounts.__acclist__
+        self.color = new_accounts.color
 
     def save(self) -> None:
         for account in self:

@@ -1,0 +1,23 @@
+/* Ensure Dash's root mount point fills the viewport */
+#react-entry-point {
+    min-height: 100vh;
+}
+
+/* react-select dropdown menu (max visible items) */
+[class$="-menu"] {
+    max-height: 400px !important;
+}
+
+[class*="-MenuList"] {
+    max-height: 400px !important;
+}
+
+/* Override DataTable's built-in 500px cap on virtualized tables */
+#transaction-table.dash-table-container .dash-spreadsheet.dash-virtualized {
+    max-height: none !important;
+}
+
+/* DataTable height propagation */
+#transaction-table .dash-spreadsheet-inner {
+    height: 100%;
+}

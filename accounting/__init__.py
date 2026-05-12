@@ -1,10 +1,9 @@
 import logging
 import shutil
-from enum import StrEnum
 from pathlib import Path
-from typing import List
+from typing import Callable
 
-from matplotlib import pyplot as plt
+import plotly.colors
 from omegaconf import OmegaConf
 
 import utils.path_utils as pu
@@ -19,37 +18,18 @@ accounts = list()
 
 class AccountFactory:
 
-    class AccountGroups(StrEnum):
-        PERSONAL = "Personal"
-        DESJARDINS = "Desjardins"
-        NATIONALBANK = "NationalBank"
-        WEALTHSIMPLE = "WealthSimple"
-        ORDIAL = "Ordial"
-
     def __init__(self):
         self.accounts_dir: Path = pu.accounts_dir
         self.accounts = self._load_accounts()
 
-    def get_account_groups(self):
-        return  self.AccountGroups
-
-    def get_account_from_group(self, group: AccountGroups) -> AccountsList:
-        accounts_group = list()
-        for acc in accounts:
-            if group != self.AccountGroups.PERSONAL:
-                if group.lower() in acc.name.lower():
-                    accounts_group.append(acc)
-            elif group == self.AccountGroups.PERSONAL:
-                if not 'ordial' in acc.name.lower():
-                    accounts_group.append(acc)
-            else:
-                raise ValueError(f"The parameter group muse belong to the following enum: {self.AccountGroups}")
-        return AccountsList(accounts_group)
+    def filter_accounts(self, predicate: Callable[[Account], bool]) -> AccountsList:
+        return AccountsList([acc for acc in self.accounts if predicate(acc)])
 
     def _load_accounts(self) -> AccountsList:
         # Dynamically load Account objects int the accounting module from the corresponding directories
         accounts_directories = [file for file in self.accounts_dir.glob('*/')]
         accounts_directories.sort()
+        loaded = []
         cmap_index = 0
         for account_directory in accounts_directories:
             fname = account_directory.stem
@@ -58,10 +38,11 @@ class AccountFactory:
                 conf = OmegaConf.load(config_path.resolve())
                 conf['account_dir'] = str(account_directory)
                 globals()[fname] = Account(conf=conf)
-                globals()[fname].color = plt.cm.get_cmap('tab20')(cmap_index)
+                _colors = plotly.colors.qualitative.Dark24
+                globals()[fname].color = _colors[cmap_index % len(_colors)]
                 cmap_index += 1
-                accounts.append(globals()[fname])
-        return AccountsList(accounts=accounts)
+                loaded.append(globals()[fname])
+        return AccountsList(accounts=loaded)
 
     def create_new_account(self) -> AccountsList:
         template_dir = self.accounts_dir.joinpath('_template_account')

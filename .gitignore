@@ -134,3 +134,4 @@ accounting/accounts
 accounting/data
 images/
 legacy_pickle_objects/
+bots/chrome_profile
