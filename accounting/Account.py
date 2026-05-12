@@ -11,19 +11,14 @@ from pathlib import Path
 import colorama
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import hashlib
-import matplotlib
 
-from matplotlib import pyplot as plt
 from utils import path_utils as pu
 
 from utils.utils import data_dir, mad
 from utils.datetime_utils import get_period_bounds
 from omegaconf.dictconfig import DictConfig
 
-
-matplotlib.use('TkAgg')
 
 MC_SAMPLING = 'mc_sampling'
 PREDICTED_BALANCE = 'predicted_balance'
@@ -253,13 +248,15 @@ class Account:
             self.transaction_data = self.transaction_data.loc[sorted_idx, :]
             self.transaction_data.reset_index(drop=True, inplace=True)
 
+        if self.transaction_data is None:
+            self.transaction_data = self._empty_transaction_data()
+
 
     def __repr__(self):
         pres = f"{self.name}\n"
         pres += f"{len(self.transaction_data)} entries\n"
         pres += f"last entry: {self.most_recent_date.strftime('%Y-%m-%d')}\n"
         pres += f"balance: {self.current_balance:.2f}$\n"
-        pres += f"type: {self.conf.type}\n"
         pres += f"status: {self.conf.status}\n"
         return pres
 
@@ -274,6 +271,18 @@ class Account:
     def __getitem__(self, item):
         ret = self.transaction_data.loc[item, :]
         return ret
+
+    @property
+    def category(self) -> str | None:
+        return self.conf.get("category", None)
+
+    @property
+    def family(self) -> str | None:
+        return self.conf.get("family", None)
+
+    @property
+    def institution(self) -> str | None:
+        return self.conf.get("institution", None)
 
     @property
     def statement_day(self) -> str | int:
@@ -352,6 +361,18 @@ class Account:
     def current_balance(self) -> float:
         return self.balance_column.iloc[-1:, 0].item()
 
+    def _empty_transaction_data(self) -> pd.DataFrame:
+        row = {}
+        for col in self.conf.columns_names:
+            if col == "date":
+                row[col] = [pd.Timestamp.today().normalize()]
+            elif col == "description":
+                row[col] = [""]
+            else:
+                row[col] = [0]
+        row["code"] = ["na"]
+        return pd.DataFrame(row)
+
     def remove_csv_file_from_records(self, csv_file: Path | str) -> None:
         csv_file = Path(csv_file)
         file_hash = _get_md5(csv_file.name)
@@ -360,6 +381,38 @@ class Account:
         except IndexError as e:
             self.logger.error(f"Couldn't remove {str(csv_file)} from {self.name} records!:\n{e}")
 
+    def force_csv_reload(self) -> None:
+        if self.transaction_data is not None:
+            code_cols = [c for c in self.transaction_data.columns if c != "code"]
+            hashes = pd.util.hash_pandas_object(self.transaction_data[code_cols], index=False)
+            saved_codes: dict[int, str] = dict(zip(hashes.tolist(), self.transaction_data["code"].tolist()))
+        else:
+            saved_codes = {}
+
+        self.processed_data_files = set()
+        self.transaction_data = None
+        self.import_csv_files()
+
+        if self.has_balance_column:
+            sorted_idx = _compute_transaction_order(self.transaction_data,
+                                                    self.balance_column_name,
+                                                    self.positive_names,
+                                                    self.negative_names)
+            self.transaction_data = self.transaction_data.loc[sorted_idx, :]
+            self.transaction_data.reset_index(drop=True, inplace=True)
+
+        if self.transaction_data is None:
+            self.transaction_data = self._empty_transaction_data()
+            return
+
+        if saved_codes:
+            code_cols = [c for c in self.transaction_data.columns if c != "code"]
+            new_hashes = pd.util.hash_pandas_object(self.transaction_data[code_cols], index=False)
+            self.transaction_data["code"] = [
+                saved_codes.get(h, code)
+                for h, code in zip(new_hashes.tolist(), self.transaction_data["code"].tolist())
+            ]
+
     def import_csv_files(self) -> None:
         csv_records_files = list()
         for file in Path(self.account_dir).joinpath("csv_data").glob('*.csv'):
@@ -367,11 +420,12 @@ class Account:
         for csv_file in csv_records_files:
             file_hash = _get_md5(csv_file.name)
             if file_hash not in self.processed_data_files:
+                first_csv = len(self.processed_data_files) == 0
                 self.processed_data_files.add(file_hash)
                 self.logger.info(f"Importing new data from {csv_file.name} for {self.name}")
 
                 try:
-                    cash_flow = pd.read_csv(filepath_or_buffer=csv_file,
+                    ledger = pd.read_csv(filepath_or_buffer=csv_file,
                                             encoding=self.conf.encoding,
                                             names=self.conf.columns_names,
                                             sep=self.conf.separator,
@@ -383,41 +437,41 @@ class Account:
 
                 # Check if there is a filter to apply on the rows:
                 if self.conf.rows_selection is not None:
-                    drop_index = cash_flow[
-                        cash_flow[self.conf.rows_selection.filter_column] != self.conf.rows_selection.filter_value
+                    drop_index = ledger[
+                        ledger[self.conf.rows_selection.filter_column] != self.conf.rows_selection.filter_value
                         ].index
-                    cash_flow.drop(index=drop_index, inplace=True, )
+                    ledger.drop(index=drop_index, inplace=True, )
 
                 # Make sure all imported data types are coherent
-                if 'date' not in cash_flow.columns:
-                    raise ValueError(f"The Account class expects a column named 'date'! Got: {cash_flow.columns}")
+                if 'date' not in ledger.columns:
+                    raise ValueError(f"The Account class expects a column named 'date'! Got: {ledger.columns}")
                 else:
                     try:
-                        cash_flow['date'] = pd.to_datetime(cash_flow['date'], format=self.conf.date_format)
+                        ledger['date'] = pd.to_datetime(ledger['date'], format=self.conf.date_format)
                     except Exception as e:
                         raise RuntimeError(f"Problem converting string to date in {csv_file} for {self.name}: {e}")
 
                 for numerical_column in self.conf.numerical_columns:
                     col_name, col_sign = numerical_column[0], numerical_column[1]
-                    cash_flow[col_name] = pd.to_numeric(cash_flow[col_name])
+                    ledger[col_name] = pd.to_numeric(ledger[col_name])
 
                 # Automatically assign common transaction code
-                cash_flow['code'] = get_common_codes(cash_flow).to_numpy()
-                na_idx = cash_flow['code'] == 'na'
-                cash_flow.loc[na_idx, 'code'] = self._get_account_specific_codes(cash_flow[na_idx])
-                cash_flow = cash_flow.replace(np.nan, 0)
+                ledger['code'] = get_common_codes(ledger).to_numpy()
+                na_idx = ledger['code'] == 'na'
+                ledger.loc[na_idx, 'code'] = self._get_account_specific_codes(ledger[na_idx])
+                ledger = ledger.replace(np.nan, 0)
 
-                if self.transaction_data is not None:
-                    cash_flow = pd.concat([self.transaction_data, cash_flow], ignore_index=True)
+                if self.transaction_data is not None and not first_csv:
+                    ledger = pd.concat([self.transaction_data, ledger], ignore_index=True)
 
-                cash_flow.drop_duplicates(subset=cash_flow.columns[~(cash_flow.columns == 'code')],
+                ledger.drop_duplicates(subset=ledger.columns[~(ledger.columns == 'code')],
                                           inplace=True)
-                cash_flow.sort_values(by=list(self.conf.sorting_order),
+                ledger.sort_values(by=list(self.conf.sorting_order),
                                       ascending=list(self.conf.sorting_ascendancy),
                                       inplace=True)
-                cash_flow.reset_index(drop=True, inplace=True)
+                ledger.reset_index(drop=True, inplace=True)
 
-                self.transaction_data = cash_flow
+                self.transaction_data = ledger
 
     def _get_account_specific_codes(self, cashflow: pd.DataFrame, description_column="description") -> List[str]:
         """
@@ -724,47 +778,6 @@ class Account:
             self.logger.info(f"No transactions planned for {self.name}")
             planned = None
         return planned
-
-    def plot(self, figure_name: str = None, c: str | None = None):
-        plt.figure(num=figure_name)
-        if c is None:
-            c = self.color
-        plt.plot(self.balance_column, label=self.name, c=c)
-
-    def histplot(self, start_date: str, end_date: str = "", c: str | None = None):
-        data, _ = self.get_period_data(start_date=start_date, end_date=end_date)
-        if data is not None:
-            plt.figure(f"Histplot {self.name} - {start_date}" + f" {end_date}" * (end_date != ""))
-            cols = list()
-            signs = list()
-            for col, sign in self.conf.numerical_columns:
-                cols += [col]
-                signs += [sign]
-            data['merged'] = (data.loc[:, cols] * signs).sum(axis=1)
-            sns.histplot(data=data, x='merged', log_scale=(False, False), color=c)
-            plt.title(f"{self.name}\n{start_date}" + f" - {end_date}" * (end_date != ""))
-
-    def barplot(self, start_date: str, end_date: str = ""):
-        data, period_length = self.get_period_data(start_date=start_date, end_date=end_date)
-        if data is not None:
-            data: pd.DataFrame = data.groupby(by='code').sum(numeric_only=True)
-            data['total'] = (data.loc[:, self.numerical_names] * self.numerical_signs).sum(axis=1)
-            data.sort_values(by='total', ascending=False, inplace=True)
-            plt.figure(num=f"{self.name} - {start_date}")
-
-            income = data[data['total'] > 0]['total'].sum()
-            expenses = data[data['total'] <= 0]['total'].sum()
-            plt.title(label=f"{self.name} - {start_date}\n"
-                            f"in: {income: .2f}, out: {expenses: .2f}, bal: {income+expenses: .2f}")
-            colors = list()
-            for amount in data.total:
-                color = (.75, 0, 0) if amount <= 0 else (0, .75, 0)
-                colors.append(color)
-            plt.barh(y=data.index, width=data.total, color=colors)
-            for stat in data.index:
-                plt.text(x=max(0, data.loc[stat, 'total']) + 10,
-                         y=stat,
-                         s=f"{data.loc[stat, 'total']: .2f} / {data.loc[stat, 'total']/period_length: .2f}")
 
     def filter_by_code(self, code: str, start_date: str = "", end_date: str = "") -> pd.DataFrame | None:
         if start_date == "":
