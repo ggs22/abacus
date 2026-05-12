@@ -1,15 +1,12 @@
 import datetime
 import logging
-import pickle
 import random
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from copy import deepcopy, copy
 from multiprocessing import cpu_count
-from pathlib import Path
 from typing import Iterable, List, Any, Dict, Tuple
 
-import colorama
 import numpy as np
 import pandas as pd
 from tqdm import tqdm
@@ -24,18 +21,6 @@ class ForecastStrategy:
 
     def __call__(self, *args, **kwargs):
         return self.predict(*args, **kwargs)
-
-    def get_serialized_prediction_path(self, account: Account, simulation_date: str) -> Path:
-        pred_path = Path(account.serialized_self_path).parent
-        file_name = f"{account.name}_{self.__class__.__name__}_"
-        if simulation_date == "":
-            file_name += f"{account.most_recent_date.item().strftime('%Y-%m-%d')}"
-        else:
-            file_name += f"{simulation_date}"
-        file_name += "_prediction.pkl"
-        pred_path = pred_path.joinpath(file_name)
-        pred_path.parent.mkdir(exist_ok=True, parents=True)
-        return pred_path
 
     @property
     def logger(self) -> logging.Logger:
@@ -56,51 +41,29 @@ class ForecastStrategy:
                            account: Account,
                            predict_func: callable,
                            stats: AccountStats | None = None,
-                           simulation_date: str = "",
-                           force_new: bool = False) -> pd.DataFrame | None:
+                           simulation_date: str = "") -> pd.DataFrame | None:
+        if account.status != "OPEN":
+            return None
 
-        if account.status == "OPEN":
-
-            # check if the prediction already exists
-            if not self.get_serialized_prediction_path(account, simulation_date).exists() or force_new:
-                if simulation_date == "":
-                    past_data: pd.DataFrame = deepcopy(
-                        account.transaction_data
-                    )
-                else:
-                    simulation_date = datetime.date.fromisoformat(simulation_date)
-                    past_data: pd.DataFrame = deepcopy(
-                        account.transaction_data[account.transaction_data.date.array.date <= simulation_date]
-                    )
-                period_end_date = past_data.tail(1).date.array.date[0]
-
-                # compute account's default stats. if no alternative statistics have been provided
-                if stats is None:
-                    stats = account.period_stats(date="", last_n_days=365)
-                pred: pd.DataFrame | None = predict_func(stats)
-
-                # if the prediction is not empty
-                if pred is not None and pred.shape[0] > 0:
-
-                    # convert ints to datetime object (ints are used to accelerate sims. iterations)
-                    pred['date'] = pd.to_datetime(pred['date'].apply(lambda i: period_end_date + datetime.timedelta(days=i)))
-
-                    with open(self.get_serialized_prediction_path(account, simulation_date), 'wb') as pred_file:
-                        pickle.dump(pred, pred_file)
-
-            # load the prediction if it had been serialized
-            else:
-
-                with open(self.get_serialized_prediction_path(account, simulation_date), 'rb') as pred_file:
-                    pred = pickle.load(pred_file)
-                self.logger.info(f"loaded {self.get_serialized_prediction_path(account, simulation_date)}")
+        if simulation_date == "":
+            past_data: pd.DataFrame = deepcopy(account.transaction_data)
         else:
+            simulation_date = datetime.date.fromisoformat(simulation_date)
+            past_data: pd.DataFrame = deepcopy(
+                account.transaction_data[account.transaction_data.date.array.date <= simulation_date]
+            )
+        if past_data.empty:
+            return None
+        period_end_date = past_data.tail(1).date.array.date[0]
 
-            print(colorama.Fore.YELLOW,
-                  f"No prediction for account {account.name}, status: {account.status} !",
-                  colorama.Fore.RESET,
-                  sep="")
-            pred = None
+        if stats is None:
+            stats = account.period_stats(date="", last_n_days=365)
+        pred: pd.DataFrame | None = predict_func(stats)
+
+        if pred is not None and pred.shape[0] > 0:
+            pred['date'] = pd.to_datetime(pred['date'].apply(
+                lambda i: period_end_date + datetime.timedelta(days=i)
+            ))
 
         return pred
 
@@ -174,12 +137,10 @@ class ForecastByMeanStrategy(ForecastStrategy):
 
             return pred_l
 
-        force_new = kwargs.get('force_new', False)
         pred: pd.DataFrame = self._prediction_wraper(account=account,
                                                      predict_func=_predict,
                                                      stats=stats,
-                                                     simulation_date=simulation_date,
-                                                     force_new=force_new)
+                                                     simulation_date=simulation_date)
         account.prediction = pred
 
         return pred
@@ -217,15 +178,15 @@ class NoTransactionsStrategy(ForecastStrategy):
 
             return pred_l
 
-        force_new = kwargs.get('force_new', False)
         balance_offset = kwargs.get('balance_offset', 0.)
         bal_at_sim_date = account.get_balance_at_date(date=simulation_date)
 
         pred: pd.DataFrame = self._prediction_wraper(account=account,
                                                      predict_func=_predict,
                                                      stats=stats,
-                                                     simulation_date=simulation_date,
-                                                     force_new=force_new)
+                                                     simulation_date=simulation_date)
+        if pred is None:
+            return None
         pred.sort_values(by='date', inplace=True)
         pred.reset_index(drop=True, inplace=True)
         if len(account.positive_names) > 0:
@@ -315,15 +276,15 @@ class MeanTransactionsStrategy(ForecastStrategy):
 
             return pred_l
 
-        force_new = kwargs.get('force_new', False)
         balance_offset = kwargs.get('balance_offset', 0.)
         bal_at_sim_date = account.get_balance_at_date(date=simulation_date)
 
         pred: pd.DataFrame = self._prediction_wraper(account=account,
                                                      predict_func=_predict,
                                                      stats=stats,
-                                                     simulation_date=simulation_date,
-                                                     force_new=force_new)
+                                                     simulation_date=simulation_date)
+        if pred is None:
+            return None
 
         if planned_transations is not None:
             pred = pd.concat([planned_transations, pred], ignore_index=True)
@@ -352,7 +313,6 @@ class MonteCarloStrategy(ForecastStrategy):
                 predicted_days: int,
                 stats: AccountStats | None = None,
                 simulation_date: str = "",
-                force_new: bool = False,
                 **kwargs) -> pd.DataFrame:
 
         planned_transactions: pd.DataFrame | None = account.get_planned_transactions(start_date=simulation_date,
@@ -406,8 +366,9 @@ class MonteCarloStrategy(ForecastStrategy):
         pred = self._prediction_wraper(account=account,
                                        predict_func=_predict,
                                        stats=stats,
-                                       simulation_date=simulation_date,
-                                       force_new=force_new)
+                                       simulation_date=simulation_date)
+        if pred is None:
+            return None
 
         bal_at_sim_date = account.get_balance_at_date(date=simulation_date)
         if planned_transactions is not None:
@@ -520,7 +481,6 @@ class ParallelMonteCarloStrategy(ForecastStrategy):
                 predicted_days: int,
                 stats: AccountStats | None = None,
                 simulation_date: str = "",
-                force_new: bool = False,
                 **kwargs) -> pd.DataFrame:
         """
         Generate Monte Carlo forecast using parallel processing.
@@ -619,14 +579,14 @@ class ParallelMonteCarloStrategy(ForecastStrategy):
             
             return pred_df
 
-        # Use the prediction wrapper to handle caching
         pred = self._prediction_wraper(
             account=account,
             predict_func=_predict,
             stats=stats,
             simulation_date=simulation_date,
-            force_new=force_new
         )
+        if pred is None:
+            return None
 
         # Post-process results (same as original MonteCarloStrategy)
         bal_at_sim_date = account.get_balance_at_date(date=simulation_date)

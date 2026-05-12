@@ -98,7 +98,7 @@ app.layout = html.Div(
                 dcc.Tab(label="History",
                         children=[history_layout(_account_options, _default_accounts)]),
                 dcc.Tab(label="Forecast",
-                        children=[forecast_layout()]),
+                        children=[forecast_layout(all_accounts)]),
                 dcc.Tab(label="Breakdown",
                         children=[breakdown_layout()]),
                 dcc.Tab(label="Accounts",
@@ -170,7 +170,7 @@ def update_global_period(period):
 
 
 register_history_callbacks(app, all_accounts)
-register_forecast_callbacks(app)
+register_forecast_callbacks(app, all_accounts)
 register_breakdown_callbacks(app, all_accounts)
 register_accounts_callbacks(app, all_accounts)
 register_transactions_callbacks(app, all_accounts)

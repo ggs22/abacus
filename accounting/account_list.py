@@ -115,11 +115,13 @@ class AccountsList:
 
     def plot_forecasts(self,
                        forecasts: Dict[str, Forecast],
-                       show_total: bool = True,
                        total_offset: float = 0.,
+                       show_history: bool = True,
+                       sum_accounts: list[str] | None = None,
                        title: str = "") -> go.Figure:
-        return plot_forecasts(self, forecasts=forecasts, show_total=show_total,
-                              total_offset=total_offset, title=title)
+        return plot_forecasts(self, forecasts=forecasts,
+                              total_offset=total_offset, show_history=show_history,
+                              sum_accounts=sum_accounts, title=title)
 
     def barplot(self,
                 start_date: str,

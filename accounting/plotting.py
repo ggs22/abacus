@@ -169,18 +169,30 @@ def plot_cumulative_balances(accounts_list: "AccountsList", accounts: List[Accou
 
 def plot_forecasts(accounts_list: "AccountsList",
                    forecasts: Dict[str, Forecast],
-                   show_total: bool = True,
                    total_offset: float = 0.,
+                   show_history: bool = True,
+                   sum_accounts: list[str] | None = None,
                    title: str = "") -> go.Figure:
     fig = go.Figure()
     mean_bal = list()
     std_bal = list()
 
+    sum_set = set(sum_accounts) if sum_accounts else set()
+
     for account_name, forecast in forecasts.items():
         c = accounts_list.accounts[account_name].color
+        if show_history:
+            bal = forecast.account.balance_column
+            fig.add_trace(go.Scatter(
+                x=bal.index, y=bal.iloc[:, 0],
+                name=forecast.account.name,
+                mode='lines', line=dict(color=c),
+                legendgroup=account_name,
+                showlegend=False,
+            ))
         plot_forecast(forecast, c=c, fig=fig)
 
-        if show_total:
+        if account_name in sum_set:
             bal_col = forecast.account.balance_column_name
             mean_bal.append(
                 forecast.forecast_data.loc[:, ['date', bal_col]].groupby(by='date').mean()
@@ -189,7 +201,23 @@ def plot_forecasts(accounts_list: "AccountsList",
                 forecast.forecast_data.loc[:, ['date', bal_col]].groupby(by='date').std()
             )
 
-    if show_total and mean_bal:
+    if sum_set:
+        # Historical sum
+        hist_balances = [
+            accounts_list.accounts[n].balance_column.groupby(level=0).last().ffill()
+            for n in sum_set if n in accounts_list.accounts
+        ]
+        if hist_balances:
+            c = accounts_list.color
+            hist_total = pd.concat(hist_balances, axis=1).ffill().sum(axis=1)
+            fig.add_trace(go.Scatter(
+                x=hist_total.index, y=hist_total.values,
+                name="Sum", mode='lines',
+                line=dict(color=c),
+                showlegend=False,
+            ))
+
+    if mean_bal:
         total = pd.concat(mean_bal, axis=1).ffill().dropna()
         total_std = pd.concat(std_bal, axis=1).ffill().dropna()
         total['balance_total'] = total.sum(axis=1) + total_offset
