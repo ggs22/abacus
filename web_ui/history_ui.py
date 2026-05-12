@@ -3,37 +3,49 @@ from dash import dcc, html, Input, Output, State
 
 from accounting.account_list import AccountsList
 from accounting.plotting import make_balance_trace
+from .i18n import t
+
+_DARK_LAYOUT = dict(paper_bgcolor="#1e1e2e", plot_bgcolor="#181825", font_color="#cdd6f4")
+_LIGHT_LAYOUT = dict(paper_bgcolor="#ffffff", plot_bgcolor="#ffffff")
 
 
-def history_layout(account_options: list, default_accounts: list) -> html.Div:
+def _apply_theme(fig: go.Figure, theme: str) -> go.Figure:
+    if theme == "dark":
+        fig.update_layout(template="plotly_dark", **_DARK_LAYOUT)
+    else:
+        fig.update_layout(template="plotly_white", **_LIGHT_LAYOUT)
+    return fig
+
+
+def history_layout(account_options: list, default_accounts: list, lang: str = "en") -> html.Div:
     return html.Div(
         [
             html.Div(
                 [
                     html.Div(
                         [
-                            html.Label("Individual accounts",
+                            html.Label(t(lang, "individual_accounts"),
                                        style={"fontWeight": "bold", "marginBottom": "4px"}),
                             dcc.Dropdown(
                                 id="history-individual-selector",
                                 options=account_options,
                                 value=default_accounts,
                                 multi=True,
-                                placeholder="Select accounts…",
+                                placeholder=t(lang, "ph_select_accounts"),
                             ),
                         ],
                         style={"flex": "1"},
                     ),
                     html.Div(
                         [
-                            html.Label("Sum group",
+                            html.Label(t(lang, "sum_group"),
                                        style={"fontWeight": "bold", "marginBottom": "4px"}),
                             dcc.Dropdown(
                                 id="history-sum-selector",
                                 options=account_options,
                                 value=[],
                                 multi=True,
-                                placeholder="Select accounts to sum…",
+                                placeholder=t(lang, "ph_select_sum"),
                             ),
                         ],
                         style={"flex": "1"},
@@ -68,8 +80,12 @@ def register_history_callbacks(app, all_accounts: AccountsList) -> None:
         Input("history-individual-selector", "value"),
         Input("history-sum-selector", "value"),
         Input("global-period", "data"),
+        State("lang", "data"),
+        State("theme", "data"),
     )
-    def update_history(individual_accounts, sum_accounts, period_data):
+    def update_history(individual_accounts, sum_accounts, period_data, lang, theme):
+        lang = lang or "en"
+        theme = theme or "light"
         fig = go.Figure()
         if individual_accounts:
             individual = AccountsList([all_accounts[n] for n in individual_accounts])
@@ -78,17 +94,21 @@ def register_history_callbacks(app, all_accounts: AccountsList) -> None:
         if sum_accounts:
             sum_list = AccountsList([all_accounts[n] for n in sum_accounts])
             total = sum_list.balance_column
-            label = "Sum:<br>" + "<br>".join(sum_accounts)
+            label = t(lang, "sum_group") + ":<br>" + "<br>".join(sum_accounts)
             fig.add_trace(go.Scatter(
                 x=total.index, y=total["balance_total"],
                 name=label, mode="lines",
                 line=dict(color=sum_list.color, dash="dash"),
             ))
-        layout_kwargs = dict(title="Balance history", xaxis_title="Date",
-                             yaxis_title="Balance", showlegend=True)
+        layout_kwargs = dict(
+            title=t(lang, "chart_history_title"),
+            xaxis_title=t(lang, "axis_date"),
+            yaxis_title=t(lang, "axis_balance"),
+            showlegend=True,
+        )
         start = (period_data or {}).get("start")
         end = (period_data or {}).get("end")
         if start and end:
             layout_kwargs["xaxis_range"] = [start, end]
         fig.update_layout(**layout_kwargs)
-        return fig
+        return _apply_theme(fig, theme)

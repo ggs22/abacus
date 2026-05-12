@@ -7,6 +7,7 @@ from dash import dcc, html, Input, Output, State, ALL, MATCH, ctx
 from dash.exceptions import PreventUpdate
 
 from accounting.account_list import AccountsList
+from .i18n import t
 from accounting.forecast_strategies import (
     PlannedTransactionsStrategy, MeanTransactionsStrategy,
     MonteCarloStrategy, ParallelMonteCarloStrategy, NoTransactionsStrategy,
@@ -31,6 +32,18 @@ _CROSS_TYPE_OPTIONS = [
 
 _last_forecasts: dict = {}
 _forecast_factory = ForecastFactory()
+
+_DARK_LAYOUT = dict(paper_bgcolor="#1e1e2e", plot_bgcolor="#181825",
+                    font_color="#cdd6f4")
+_LIGHT_LAYOUT = dict(paper_bgcolor="#ffffff", plot_bgcolor="#ffffff")
+
+
+def _apply_theme(fig: go.Figure, theme: str) -> go.Figure:
+    if theme == "dark":
+        fig.update_layout(template="plotly_dark", **_DARK_LAYOUT)
+    else:
+        fig.update_layout(template="plotly_white", **_LIGHT_LAYOUT)
+    return fig
 
 
 def _load_config() -> dict:
@@ -58,7 +71,7 @@ def _resolve_sim_date(sim_date_str: str, all_accounts) -> str:
     return sim_date.strftime("%Y-%m-%d")
 
 
-def _cross_row(i: int, entry: dict, account_options: list) -> html.Div:
+def _cross_row(i: int, entry: dict, account_options: list, lang: str = "en") -> html.Div:
     cross_type = entry.get("type", "CreditCardPayment")
     fixed_style = (
         {"display": "flex", "alignItems": "center"}
@@ -75,7 +88,7 @@ def _cross_row(i: int, entry: dict, account_options: list) -> html.Div:
                 clearable=False,
                 style={"width": "190px"},
             ),
-            html.Span("OP:", style={"margin": "0 4px 0 8px", "flexShrink": "0"}),
+            html.Span("OP :", style={"margin": "0 4px 0 8px", "flexShrink": "0"}),
             dcc.Dropdown(
                 id={"type": "cross-op", "index": i},
                 options=account_options,
@@ -83,7 +96,7 @@ def _cross_row(i: int, entry: dict, account_options: list) -> html.Div:
                 clearable=False,
                 style={"width": "170px"},
             ),
-            html.Span("Loan/CC:", style={"margin": "0 4px 0 8px", "flexShrink": "0"}),
+            html.Span("Prêt/CC :" if lang == "fr" else "Loan/CC:", style={"margin": "0 4px 0 8px", "flexShrink": "0"}),
             dcc.Dropdown(
                 id={"type": "cross-secondary", "index": i},
                 options=account_options,
@@ -130,7 +143,7 @@ def _cross_row(i: int, entry: dict, account_options: list) -> html.Div:
     )
 
 
-def forecast_layout(all_accounts) -> html.Div:
+def forecast_layout(all_accounts, lang: str = "en") -> html.Div:
     config = _load_config()
     global_cfg = config.get("global", {})
     accounts_cfg = config.get("accounts", {})
@@ -160,7 +173,7 @@ def forecast_layout(all_accounts) -> html.Div:
                 [
                     html.Div(
                         [
-                            html.Label("End date", style={"fontSize": "12px"}),
+                            html.Label(t(lang, "end_date"), style={"fontSize": "12px"}),
                             dcc.Input(
                                 id="forecast-end-date", type="text", debounce=True,
                                 value=global_cfg.get("end_date", ""),
@@ -172,8 +185,7 @@ def forecast_layout(all_accounts) -> html.Div:
                     ),
                     html.Div(
                         [
-                            html.Label("Simulation date (blank = auto)",
-                                       style={"fontSize": "12px"}),
+                            html.Label(t(lang, "simulation_date"), style={"fontSize": "12px"}),
                             dcc.Input(
                                 id="forecast-sim-date", type="text", debounce=True,
                                 value=global_cfg.get("simulation_date", ""),
@@ -185,7 +197,7 @@ def forecast_layout(all_accounts) -> html.Div:
                     ),
                     html.Div(
                         [
-                            html.Label("MC iterations", style={"fontSize": "12px"}),
+                            html.Label(t(lang, "mc_iterations"), style={"fontSize": "12px"}),
                             dcc.Input(
                                 id="forecast-mc-iterations", type="number", min=1,
                                 value=global_cfg.get("mc_iterations", 100),
@@ -196,8 +208,8 @@ def forecast_layout(all_accounts) -> html.Div:
                     ),
                     html.Div(
                         [
-                            html.Button("▶ Run Forecast", id="run-forecast-btn", n_clicks=0,
-                                        style={"fontWeight": "bold"}),
+                            html.Button(t(lang, "run_forecast"), id="run-forecast-btn",
+                                        n_clicks=0, style={"fontWeight": "bold"}),
                             html.Span("", id="forecast-status",
                                       style={"marginLeft": "10px", "color": "green",
                                              "fontFamily": "monospace"}),
@@ -213,7 +225,7 @@ def forecast_layout(all_accounts) -> html.Div:
             html.Details(
                 [
                     html.Summary(
-                        "Per-account strategies",
+                        t(lang, "per_account_strategies"),
                         style={"fontWeight": "bold", "cursor": "pointer",
                                "marginBottom": "6px", "userSelect": "none"},
                     ),
@@ -230,7 +242,7 @@ def forecast_layout(all_accounts) -> html.Div:
                 [
                     html.Div(
                         [
-                            html.Label("Forecast accounts",
+                            html.Label(t(lang, "forecast_accounts"),
                                        style={"fontWeight": "bold", "marginBottom": "4px"}),
                             dcc.Dropdown(
                                 id="forecast-account-selector",
@@ -238,21 +250,21 @@ def forecast_layout(all_accounts) -> html.Div:
                                          for acc in all_accounts],
                                 value=[acc.name for acc in all_accounts],
                                 multi=True,
-                                placeholder="Select accounts…",
+                                placeholder=t(lang, "ph_select_forecast_accounts"),
                             ),
                         ],
                         style={"flex": "1"},
                     ),
                     html.Div(
                         [
-                            html.Label("Sum group",
+                            html.Label(t(lang, "sum_group"),
                                        style={"fontWeight": "bold", "marginBottom": "4px"}),
                             dcc.Dropdown(
                                 id="forecast-sum-selector",
                                 options=[],
                                 value=[],
                                 multi=True,
-                                placeholder="Select accounts to sum…",
+                                placeholder=t(lang, "ph_select_forecast_sum"),
                             ),
                         ],
                         style={"flex": "1"},
@@ -271,11 +283,11 @@ def forecast_layout(all_accounts) -> html.Div:
                     html.Hr(),
                     html.Div(
                         [
-                            html.Span("Cross-account strategies",
+                            html.Span(t(lang, "cross_account_strategies"),
                                       style={"fontWeight": "bold", "fontSize": "15px"}),
-                            html.Button("+ Add", id="add-cross-btn", n_clicks=0,
+                            html.Button(t(lang, "add"), id="add-cross-btn", n_clicks=0,
                                         style={"marginLeft": "12px"}),
-                            html.Button("▶ Run", id="run-cross-btn", n_clicks=0,
+                            html.Button(t(lang, "run"), id="run-cross-btn", n_clicks=0,
                                         style={"marginLeft": "6px", "fontWeight": "bold"}),
                             html.Span("", id="cross-status",
                                       style={"marginLeft": "10px", "color": "green",
@@ -318,10 +330,12 @@ def register_forecast_callbacks(app, all_accounts) -> None:
         State("forecast-sim-date", "value"),
         State("forecast-mc-iterations", "value"),
         State("forecast-account-selector", "value"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
-    def run_forecast(_, strategies, ids, end_date, sim_date_str, mc_iters, selected_names):
+    def run_forecast(_, strategies, ids, end_date, sim_date_str, mc_iters, selected_names, lang):
         global _last_forecasts
+        lang = lang or "en"
 
         selected_names = selected_names or []
         sim_date = _resolve_sim_date(sim_date_str, all_accounts)
@@ -333,12 +347,12 @@ def register_forecast_callbacks(app, all_accounts) -> None:
                     - dt.date.fromisoformat(sim_date)
                 ).days
             except ValueError:
-                return None, "Invalid date format.", {"display": "none"}, []
+                return None, t(lang, "forecast_err_date"), {"display": "none"}, []
         else:
             predicted_days = 365
 
         if predicted_days <= 0:
-            return None, "End date must be after simulation date.", {"display": "none"}, []
+            return None, t(lang, "forecast_err_past"), {"display": "none"}, []
 
         strategy_map = {d["account"]: s for d, s in zip(ids, strategies)}
         mc_iterations = int(mc_iters or 100)
@@ -370,32 +384,39 @@ def register_forecast_callbacks(app, all_accounts) -> None:
 
         sum_options = [{"label": n, "value": n} for n in _last_forecasts]
         trigger = {"ts": dt.datetime.now().isoformat()}
-        status = f"Done — {len(_last_forecasts)} account(s) forecasted."
+        status = t(lang, "forecast_done", n=len(_last_forecasts))
         return trigger, status, {}, sum_options
 
     @app.callback(
         Output("forecast-chart", "figure"),
         Input("forecast-run-trigger", "data"),
         Input("forecast-sum-selector", "value"),
+        State("lang", "data"),
+        State("theme", "data"),
     )
-    def render_forecast_chart(trigger, sum_accounts):
+    def render_forecast_chart(trigger, sum_accounts, lang, theme):
+        lang = lang or "en"
         if not _last_forecasts:
-            return go.Figure()
+            return _apply_theme(go.Figure(), theme or "light")
         accounts = AccountsList([
             all_accounts[n] for n in _last_forecasts
             if n in all_accounts.accounts
         ])
-        return accounts.plot_forecasts(
+        fig = accounts.plot_forecasts(
             forecasts=_last_forecasts,
             sum_accounts=sum_accounts or [],
+            title=t(lang, "chart_forecast_title"),
         )
+        return _apply_theme(fig, theme or "light")
 
     @app.callback(
         Output("cross-account-rows", "children"),
         Input("cross-account-store", "data"),
+        State("lang", "data"),
     )
-    def render_cross_rows(store_data):
-        return [_cross_row(i, e, account_options) for i, e in enumerate(store_data or [])]
+    def render_cross_rows(store_data, lang):
+        lang = lang or "en"
+        return [_cross_row(i, e, account_options, lang) for i, e in enumerate(store_data or [])]
 
     @app.callback(
         Output({"type": "cross-fixed-params", "index": MATCH}, "style"),
@@ -448,10 +469,14 @@ def register_forecast_callbacks(app, all_accounts) -> None:
         State({"type": "cross-amount", "index": ALL}, "value"),
         State("cross-account-store", "data"),
         State("forecast-sum-selector", "value"),
+        State("lang", "data"),
+        State("theme", "data"),
         prevent_initial_call=True,
     )
     def run_cross_forecasts(_, types, ops, secondaries, rates, days, amounts, store_data,
-                            sum_accounts):
+                            sum_accounts, lang, theme):
+        lang = lang or "en"
+        plotly_template = "plotly_dark" if theme == "dark" else "plotly_white"
         global _last_forecasts
 
         if not _last_forecasts:
@@ -519,9 +544,11 @@ def register_forecast_callbacks(app, all_accounts) -> None:
         fig = accounts.plot_forecasts(
             forecasts=_last_forecasts,
             sum_accounts=sum_accounts or [],
+            title=t(lang, "chart_forecast_title"),
         )
+        _apply_theme(fig, theme or "light")
 
-        status = f"Done — {len(requested)} cross-account strategy(ies) applied."
+        status = t(lang, "cross_done", n=len(requested))
         if errors:
             status += f" Skipped: {'; '.join(errors)}."
         return fig, status, new_store

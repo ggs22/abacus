@@ -3,6 +3,8 @@ from pathlib import Path
 
 from dash import html, dcc, Input, Output, State, ALL, ctx
 
+from .i18n import t
+
 
 def _common_path() -> Path:
     return Path(__file__).parent.parent / "accounting" / "accounts" / "common_assignation.json"
@@ -30,7 +32,7 @@ def _save(scope: str, data: dict, all_accounts) -> None:
         json.dump(data, f, indent=4, ensure_ascii=False)
 
 
-def assignations_layout(all_accounts) -> html.Div:
+def assignations_layout(all_accounts, lang: str = "en") -> html.Div:
     scope_options = [{"label": "Global", "value": "__global__"}] + [
         {"label": acc.name, "value": acc.name} for acc in all_accounts
     ]
@@ -41,8 +43,8 @@ def assignations_layout(all_accounts) -> html.Div:
         children=[
             dcc.Store(id="assign-data"),
             html.Div([
-                html.Label("Scope", style={"fontWeight": "bold", "marginRight": "8px",
-                                           "flexShrink": "0"}),
+                html.Label(t(lang, "scope"), style={"fontWeight": "bold", "marginRight": "8px",
+                                                    "flexShrink": "0"}),
                 dcc.Dropdown(
                     id="assign-scope",
                     options=scope_options,
@@ -54,7 +56,8 @@ def assignations_layout(all_accounts) -> html.Div:
             html.Div([
                 # ── left: codes list ─────────────────────────────────────────
                 html.Div([
-                    html.Div("Codes", style={"fontWeight": "bold", "marginBottom": "6px"}),
+                    html.Div(t(lang, "codes"),
+                             style={"fontWeight": "bold", "marginBottom": "6px"}),
                     dcc.RadioItems(
                         id="assign-code-selector",
                         options=[],
@@ -67,14 +70,14 @@ def assignations_layout(all_accounts) -> html.Div:
                     html.Div([
                         dcc.Input(
                             id="assign-new-code-input",
-                            placeholder="New code name…",
+                            placeholder=t(lang, "ph_new_code"),
                             debounce=False,
                             style={"width": "150px", "marginRight": "6px",
                                    "fontFamily": "monospace"},
                         ),
-                        html.Button("Add", id="assign-add-code-btn", n_clicks=0),
+                        html.Button(t(lang, "add"), id="assign-add-code-btn", n_clicks=0),
                         html.Button(
-                            "Delete",
+                            t(lang, "delete"),
                             id="assign-del-code-btn",
                             n_clicks=0,
                             style={"marginLeft": "6px", "color": "red"},
@@ -96,16 +99,16 @@ def assignations_layout(all_accounts) -> html.Div:
                     html.Div([
                         dcc.Input(
                             id="assign-new-kw-input",
-                            placeholder="New keyword…",
+                            placeholder=t(lang, "ph_new_keyword"),
                             debounce=False,
                             style={"width": "220px", "marginRight": "6px",
                                    "fontFamily": "monospace"},
                         ),
-                        html.Button("Add", id="assign-add-kw-btn", n_clicks=0),
+                        html.Button(t(lang, "add"), id="assign-add-kw-btn", n_clicks=0),
                     ], style={"display": "flex", "alignItems": "center", "marginTop": "10px"}),
                     html.Div([
                         html.Button(
-                            "Save",
+                            t(lang, "save"),
                             id="assign-save-btn",
                             n_clicks=0,
                             style={"marginTop": "12px"},
@@ -265,8 +268,9 @@ def register_assignations_callbacks(app, all_accounts) -> None:
         Input("assign-save-btn", "n_clicks"),
         State("assign-scope", "value"),
         State("assign-data", "data"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
-    def save(_, scope, data):
+    def save(_, scope, data, lang):
         _save(scope, data, all_accounts)
-        return "Saved."
+        return t(lang or "en", "account_saved")

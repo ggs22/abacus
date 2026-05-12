@@ -1,0 +1,240 @@
+/* ── CSS Custom Properties ──────────────────────────────────────────────── */
+:root {
+  --bg:        #ffffff;
+  --bg2:       #f8f8f8;
+  --bg3:       #f0f0f0;
+  --text:      #222222;
+  --text2:     #555555;
+  --border:    #dddddd;
+  --input-bg:  #ffffff;
+  --btn-bg:    #e8e8e8;
+  --btn-text:  #222222;
+  --shadow:    rgba(0, 0, 0, 0.12);
+  --plot-bg:   #ffffff;
+  --plot-paper:#ffffff;
+}
+
+html[data-theme="dark"] {
+  --bg:        #1e1e2e;
+  --bg2:       #181825;
+  --bg3:       #313244;
+  --text:      #cdd6f4;
+  --text2:     #a6adc8;
+  --border:    #45475a;
+  --input-bg:  #313244;
+  --btn-bg:    #45475a;
+  --btn-text:  #cdd6f4;
+  --shadow:    rgba(0, 0, 0, 0.45);
+  --plot-bg:   #181825;
+  --plot-paper:#1e1e2e;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────── */
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  margin: 0;
+}
+
+label, span, p, div {
+  color: inherit;
+}
+
+hr {
+  border-color: var(--border);
+  opacity: 0.6;
+}
+
+/* ── Native inputs ──────────────────────────────────────────────────────── */
+input[type="text"],
+input[type="number"],
+input[type="email"],
+input[type="password"],
+textarea {
+  background-color: var(--input-bg) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text2) !important;
+}
+
+/* ── Buttons ────────────────────────────────────────────────────────────── */
+button {
+  background-color: var(--btn-bg) !important;
+  color: var(--btn-text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 4px;
+  cursor: pointer;
+  padding: 4px 10px;
+}
+
+button:hover {
+  filter: brightness(1.12);
+}
+
+/* ── Details / Summary ──────────────────────────────────────────────────── */
+details {
+  background-color: var(--bg2) !important;
+  border-color: var(--border) !important;
+}
+
+summary {
+  color: var(--text) !important;
+}
+
+/* ── Tabs ───────────────────────────────────────────────────────────────── */
+.tab {
+  background-color: var(--bg2) !important;
+  color: var(--text2) !important;
+  border-color: var(--border) !important;
+  font-weight: bold !important;
+  font-size: 15px !important;
+  padding-top: 4px !important;
+  padding-bottom: 4px !important;
+}
+
+.tab--selected,
+.tab.tab--selected {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  border-bottom-color: var(--bg) !important;
+}
+
+.tab-parent,
+.tab-container {
+  background-color: var(--bg) !important;
+  border-color: var(--border) !important;
+}
+
+/* ── Dash Dropdown (Dash 4.x custom component) ──────────────────────────── */
+
+/* Trigger / control box */
+.dash-dropdown-trigger,
+.dash-dropdown-wrapper {
+  background-color: var(--input-bg) !important;
+  border-color: var(--border) !important;
+  color: var(--text) !important;
+}
+
+/* Selected value text and placeholder */
+.dash-dropdown-value {
+  color: var(--text) !important;
+}
+
+.dash-dropdown-placeholder {
+  color: var(--text2) !important;
+}
+
+/* Multi-select chips */
+.dash-dropdown-value-item {
+  background-color: var(--bg3) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+/* Icons (chevron, clear) */
+.dash-dropdown-trigger-icon,
+.dash-dropdown-clear {
+  color: var(--text2) !important;
+}
+
+/* Dropdown panel (open state) */
+.dash-dropdown-content {
+  background-color: var(--bg3) !important;
+  border: 1px solid var(--border) !important;
+  box-shadow: 0 4px 12px var(--shadow) !important;
+}
+
+/* Search input area */
+.dash-dropdown-search,
+.dash-dropdown-search-container {
+  background-color: var(--input-bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dash-dropdown-search input,
+.dash-dropdown-search-container input {
+  background-color: var(--input-bg) !important;
+  color: var(--text) !important;
+  caret-color: var(--text) !important;
+}
+
+/* Options list */
+.dash-dropdown-options {
+  background-color: var(--bg3) !important;
+}
+
+/* Individual option */
+.dash-dropdown-option {
+  background-color: var(--bg3) !important;
+  color: var(--text) !important;
+}
+
+.dash-dropdown-option:hover {
+  background-color: var(--border) !important;
+}
+
+.dash-dropdown-option[aria-selected="true"] {
+  background-color: var(--bg2) !important;
+  font-weight: bold;
+}
+
+/* ── DataTable ──────────────────────────────────────────────────────────── */
+.dash-table-container .dash-spreadsheet-container,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet .dash-cell,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet .dash-cell input {
+  background-color: var(--bg) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet .dash-header {
+  background-color: var(--bg3) !important;
+  color: var(--text) !important;
+  border-color: var(--border) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet .dash-filter {
+  background-color: var(--bg2) !important;
+  border-color: var(--border) !important;
+}
+
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet .cell--selected,
+.dash-table-container .dash-spreadsheet-container .dash-spreadsheet .focused {
+  background-color: var(--bg3) !important;
+}
+
+/* ── Plotly graph container background ──────────────────────────────────── */
+/* Covers the wrapper div; Plotly's own template handles the SVG layer.     */
+.dash-graph,
+.js-plotly-plot,
+.js-plotly-plot .plotly,
+.js-plotly-plot .svg-container {
+  background-color: var(--plot-paper) !important;
+}
+
+/* ── Settings panel ─────────────────────────────────────────────────────── */
+#settings-panel {
+  background-color: var(--bg3) !important;
+  border-color: var(--border) !important;
+  box-shadow: 0 4px 16px var(--shadow);
+  color: var(--text);
+}
+
+#settings-btn {
+  font-size: 18px;
+  padding: 2px 8px;
+  line-height: 1;
+  border-radius: 4px;
+}

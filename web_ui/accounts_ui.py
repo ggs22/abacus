@@ -5,6 +5,7 @@ from dash import dcc, html, Input, Output, State, ctx
 from omegaconf import OmegaConf
 
 from .assignations_ui import assignations_layout, register_assignations_callbacks
+from .i18n import t
 
 _acct_field_style = {"width": "350px", "fontFamily": "monospace"}
 _acct_label_style = {"width": "260px", "fontWeight": "bold", "flexShrink": "0"}
@@ -18,7 +19,8 @@ def _acct_row(label, component):
     )
 
 
-def accounts_layout(all_accounts, account_options: list, default_account: str) -> html.Div:
+def accounts_layout(all_accounts, account_options: list, default_account: str,
+                    lang: str = "en") -> html.Div:
     category_options = [{"label": v, "value": v} for v in sorted({
         acc.category for acc in all_accounts if acc.category
     })]
@@ -40,11 +42,11 @@ def accounts_layout(all_accounts, account_options: list, default_account: str) -
                         clearable=False,
                         style={"width": "300px"},
                     ),
-                    html.Button("Add Account", id="add-account-btn", n_clicks=0,
+                    html.Button(t(lang, "add_account"), id="add-account-btn", n_clicks=0,
                                 style={"marginLeft": "10px"}),
-                    html.Button("Save", id="save-account-btn", n_clicks=0,
+                    html.Button(t(lang, "save"), id="save-account-btn", n_clicks=0,
                                 style={"marginLeft": "10px"}),
-                    html.Button("Manage Assignations", id="manage-assignations-btn",
+                    html.Button(t(lang, "manage_assignations"), id="manage-assignations-btn",
                                 n_clicks=0, style={"marginLeft": "10px"}),
                     html.Span(id="account-save-status",
                               style={"marginLeft": "10px", "color": "green"}),
@@ -54,11 +56,11 @@ def accounts_layout(all_accounts, account_options: list, default_account: str) -
             html.Div(
                 [
                     dcc.Input(id="new-acct-name",
-                              placeholder="Account name (e.g. MyBank)",
+                              placeholder=t(lang, "account_name_placeholder"),
                               style={"width": "250px"}),
-                    html.Button("Create", id="create-account-btn", n_clicks=0,
+                    html.Button(t(lang, "create"), id="create-account-btn", n_clicks=0,
                                 style={"marginLeft": "10px"}),
-                    html.Button("Cancel", id="cancel-account-btn", n_clicks=0,
+                    html.Button(t(lang, "cancel"), id="cancel-account-btn", n_clicks=0,
                                 style={"marginLeft": "10px"}),
                 ],
                 id="new-acct-form",
@@ -140,7 +142,7 @@ def accounts_layout(all_accounts, account_options: list, default_account: str) -
                         ],
                         style={"maxWidth": "700px"},
                     ),
-                    assignations_layout(all_accounts),
+                    assignations_layout(all_accounts, lang),
                 ],
                 style={"display": "flex", "gap": "40px", "alignItems": "flex-start"},
             ),
@@ -252,14 +254,16 @@ def register_accounts_callbacks(app, all_accounts) -> None:
         State("acct-initial-balance", "value"),
         State("acct-statement-day", "value"),
         State("accounts-tab-selector", "value"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
     def save_account_config(
         _n, name, category, family, institution, interest_rate, status,
         encoding, date_format, separator, has_header, columns_names_str,
         sorting_order_str, sorting_asc_str, numerical_cols_str, balance_col_str,
-        rows_col, rows_val, initial_balance, statement_day, account_name,
+        rows_col, rows_val, initial_balance, statement_day, account_name, lang,
     ):
+        lang = lang or "en"
         account = all_accounts[account_name]
         config_path = Path(account.account_dir) / "config.yaml"
         conf = OmegaConf.load(config_path)
@@ -312,7 +316,7 @@ def register_accounts_callbacks(app, all_accounts) -> None:
         conf["statement_day"] = (statement_day or "").strip() or None
 
         OmegaConf.save(conf, config_path)
-        return "Saved."
+        return t(lang, "account_saved")
 
     @app.callback(
         Output("new-acct-form", "style"),
@@ -330,22 +334,24 @@ def register_accounts_callbacks(app, all_accounts) -> None:
         Output("account-save-status", "children", allow_duplicate=True),
         Input("create-account-btn", "n_clicks"),
         State("new-acct-name", "value"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
-    def create_account_callback(_n, account_name):
+    def create_account_callback(_n, account_name, lang):
+        lang = lang or "en"
         if not account_name or not account_name.strip():
-            return "Enter an account name."
+            return t(lang, "account_name_required")
         name = account_name.strip()
         accounts_dir = Path(all_accounts[0].account_dir).parent
         template_dir = accounts_dir / "_template_account"
         dest_dir = accounts_dir / name.lower()
         if dest_dir.exists():
-            return f"Directory '{name.lower()}' already exists."
+            return t(lang, "account_exists", name=name.lower())
         shutil.copytree(template_dir, dest_dir)
         shutil.move(str(dest_dir / "_config.yaml"), str(dest_dir / "config.yaml"))
         conf = OmegaConf.load(dest_dir / "config.yaml")
         conf["name"] = name
         OmegaConf.save(conf, dest_dir / "config.yaml")
-        return f"Account '{name}' created. Restart app to load it."
+        return t(lang, "account_created", name=name)
 
     register_assignations_callbacks(app, all_accounts)

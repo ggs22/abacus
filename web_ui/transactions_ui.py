@@ -7,6 +7,7 @@ import pandas as pd
 from dash import html, dcc, dash_table, Input, Output, State, ctx
 
 from accounting.account_list import AccountsList
+from .i18n import t
 
 
 _FLOAT_TOLERANCE = 1e-2
@@ -178,7 +179,7 @@ def _totals(account, rows: list) -> str:
 
 
 def transactions_layout(all_accounts, account_options: list[dict],
-                        default_account: str) -> html.Div:
+                        default_account: str, lang: str = "en") -> html.Div:
     code_opts = [{"label": c, "value": c} for c in _all_codes(all_accounts)]
     return html.Div(
         [
@@ -189,9 +190,9 @@ def transactions_layout(all_accounts, account_options: list[dict],
                     dcc.Dropdown(id="table-account-selector",
                                  options=account_options, value=default_account,
                                  clearable=False, style={"width": "300px"}),
-                    html.Button("Save", id="save-table-btn", n_clicks=0,
+                    html.Button(t(lang, "save"), id="save-table-btn", n_clicks=0,
                                 style={"marginLeft": "10px"}),
-                    html.Button("Reload CSVs", id="reload-csv-btn", n_clicks=0,
+                    html.Button(t(lang, "reload_csvs"), id="reload-csv-btn", n_clicks=0,
                                 style={"marginLeft": "10px"}),
                     html.Span(id="save-status",
                               style={"marginLeft": "10px", "color": "green"}),
@@ -202,14 +203,14 @@ def transactions_layout(all_accounts, account_options: list[dict],
             html.Div(
                 [
                     dcc.Input(id="txn-str-filter", type="text", debounce=True,
-                              placeholder="Regex on text columns…",
+                              placeholder=t(lang, "ph_regex"),
                               style={"width": "240px", "fontFamily": "monospace"}),
                     dcc.Input(id="txn-float-filter", type="text", debounce=True,
-                              placeholder="Amount or abs(x)…",
+                              placeholder=t(lang, "ph_amount"),
                               style={"width": "160px", "fontFamily": "monospace",
                                      "marginLeft": "8px"}),
                     dcc.Dropdown(id="txn-code-filter", options=code_opts, multi=True,
-                                 placeholder="Filter by code…",
+                                 placeholder=t(lang, "ph_filter_code"),
                                  style={"flex": "1", "marginLeft": "8px"}),
                 ],
                 style={"display": "flex", "alignItems": "center",
@@ -248,7 +249,7 @@ def transactions_layout(all_accounts, account_options: list[dict],
                             # left: account list
                             html.Div(
                                 [
-                                    html.Div("Accounts",
+                                    html.Div(t(lang, "accounts_heading"),
                                              style={"fontWeight": "bold",
                                                     "marginBottom": "8px",
                                                     "fontFamily": "monospace"}),
@@ -411,9 +412,11 @@ def register_transactions_callbacks(app, all_accounts) -> None:
         Input("txn-cross-save-btn", "n_clicks"),
         State("txn-cross-table", "data"),
         State("txn-cross-selector", "value"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
-    def save_cross(_, rows, acc_name):
+    def save_cross(_, rows, acc_name, lang):
+        lang = lang or "en"
         if not acc_name:
             return ""
         account = all_accounts[acc_name]
@@ -425,7 +428,7 @@ def register_transactions_callbacks(app, all_accounts) -> None:
                 n += 1
         if n:
             account.save()
-        return f"Saved {n} change(s)." if n else "Nothing to save."
+        return t(lang, "saved_n", n=n) if n else t(lang, "nothing_to_save")
 
     # ── single-account callbacks ──────────────────────────────────────────────
 
@@ -438,9 +441,11 @@ def register_transactions_callbacks(app, all_accounts) -> None:
         State("transaction-table", "data"),
         State("table-account-selector", "value"),
         State("global-period", "data"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
-    def save_table(_, rows, account_name, period_data):
+    def save_table(_, rows, account_name, period_data, lang):
+        lang = lang or "en"
         account = all_accounts[account_name]
         n = 0
         for row in rows:
@@ -453,7 +458,7 @@ def register_transactions_callbacks(app, all_accounts) -> None:
         start = (period_data or {}).get("start")
         end = (period_data or {}).get("end")
         data, columns, dropdown = _fmt(account, _filter_df(account, start, end))
-        return (f"Saved {n} change(s)." if n else "Nothing to save.",
+        return (t(lang, "saved_n", n=n) if n else t(lang, "nothing_to_save"),
                 data, columns, dropdown)
 
     @app.callback(
@@ -464,16 +469,18 @@ def register_transactions_callbacks(app, all_accounts) -> None:
         Input("reload-csv-btn", "n_clicks"),
         State("table-account-selector", "value"),
         State("global-period", "data"),
+        State("lang", "data"),
         prevent_initial_call=True,
     )
-    def reload_csvs(_, account_name, period_data):
+    def reload_csvs(_, account_name, period_data, lang):
+        lang = lang or "en"
         account = all_accounts[account_name]
         account.force_csv_reload()
         account.save()
         start = (period_data or {}).get("start")
         end = (period_data or {}).get("end")
         data, columns, dropdown = _fmt(account, _filter_df(account, start, end))
-        return "Reloaded.", data, columns, dropdown
+        return t(lang, "reloaded"), data, columns, dropdown
 
     @app.callback(
         Output("transaction-totals", "children"),

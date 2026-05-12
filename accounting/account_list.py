@@ -2,7 +2,6 @@ from typing import List, Dict, Sequence
 
 import numpy as np
 import pandas as pd
-import plotly.colors
 import plotly.graph_objects as go
 
 from accounting.forecast_strategies import Forecast
@@ -11,7 +10,22 @@ from accounting.plotting import (plot_accounts_list, plot_cumulative_balances,
                                  plot_forecasts, barplot)
 from utils.utils import mad
 
-_COLORS = plotly.colors.qualitative.Dark24
+# Muted qualitative palette — lower saturation than Plotly's Dark24 defaults,
+# readable on both light and dark backgrounds.
+_COLORS = [
+    "#5b8db8",  # steel blue
+    "#c4714f",  # terra cotta
+    "#4a9e7a",  # sage green
+    "#9068b0",  # muted violet
+    "#b89440",  # muted gold
+    "#4a94a8",  # teal
+    "#b05878",  # muted rose
+    "#6a8840",  # olive
+    "#5860a0",  # indigo
+    "#a06848",  # sienna
+    "#4a8870",  # jade
+    "#887060",  # taupe
+]
 
 
 class AccountsList:

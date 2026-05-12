@@ -69,7 +69,7 @@ def barplot_account(account: Account, start_date: str, end_date: str = "") -> go
 
         income = data[data['total'] > 0]['total'].sum()
         expenses = data[data['total'] <= 0]['total'].sum()
-        colors = ['rgb(0,192,0)' if v > 0 else 'rgb(192,0,0)' for v in data['total']]
+        colors = ['#4a9e5a' if v > 0 else '#b05050' for v in data['total']]
         text = [f"{v:.2f} / {v / period_length:.2f}" for v in data['total']]
 
         fig.add_trace(go.Bar(
@@ -277,7 +277,7 @@ def barplot(accounts_list: "AccountsList",
 
         income = data[data > 0].sum()
         expenses = data[data <= 0].sum()
-        colors = ['rgb(0,192,0)' if v > 0 else 'rgb(192,0,0)' for v in data]
+        colors = ['#4a9e5a' if v > 0 else '#b05050' for v in data]
         text = [f"{v:.2f} / {v / overall_len:.2f}" for v in data]
 
         chart_title = (

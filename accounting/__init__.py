@@ -3,13 +3,12 @@ import shutil
 from pathlib import Path
 from typing import Callable
 
-import plotly.colors
 from omegaconf import OmegaConf
 
 import utils.path_utils as pu
 
 from accounting.Account import Account, AccountStats, PREDICTED_BALANCE
-from accounting.account_list import AccountsList
+from accounting.account_list import AccountsList, _COLORS
 
 logging.basicConfig(level=logging.INFO)
 
@@ -38,8 +37,7 @@ class AccountFactory:
                 conf = OmegaConf.load(config_path.resolve())
                 conf['account_dir'] = str(account_directory)
                 globals()[fname] = Account(conf=conf)
-                _colors = plotly.colors.qualitative.Dark24
-                globals()[fname].color = _colors[cmap_index % len(_colors)]
+                globals()[fname].color = _COLORS[cmap_index % len(_COLORS)]
                 cmap_index += 1
                 loaded.append(globals()[fname])
         return AccountsList(accounts=loaded)
