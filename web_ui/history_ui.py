@@ -1,3 +1,4 @@
+import pandas as pd
 import plotly.graph_objects as go
 from dash import dcc, html, Input, Output, State
 
@@ -108,7 +109,13 @@ def register_history_callbacks(app, all_accounts: AccountsList) -> None:
         )
         start = (period_data or {}).get("start")
         end = (period_data or {}).get("end")
-        if start and end:
-            layout_kwargs["xaxis_range"] = [start, end]
+        if start or end:
+            all_names = list({*(individual_accounts or []), *(sum_accounts or [])})
+            if all_names:
+                dates = [all_accounts[n].transaction_data["date"] for n in all_names]
+                all_dates = pd.concat(dates)
+                range_start = start or all_dates.min().strftime("%Y-%m-%d")
+                range_end = end or all_dates.max().strftime("%Y-%m-%d")
+                layout_kwargs["xaxis_range"] = [range_start, range_end]
         fig.update_layout(**layout_kwargs)
         return _apply_theme(fig, theme)

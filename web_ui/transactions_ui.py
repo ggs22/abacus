@@ -114,9 +114,12 @@ def _fmt(account, df: pd.DataFrame) -> tuple:
 
 def _filter_df(account, start: str | None, end: str | None) -> pd.DataFrame:
     df = account.transaction_data
-    if start:
+    if start or end:
         date_str = df["date"].dt.strftime("%Y-%m-%d")
-        df = df[(date_str >= start) & (date_str <= end)]
+        if start:
+            df = df[date_str >= start]
+        if end:
+            df = df[date_str <= end]
     return df
 
 
@@ -132,7 +135,7 @@ def _cross_frames(all_accounts, filtered_names: list, codes: list,
         account_frames: dict[str, list] = {}
         for code in codes:
             for acc_name, df in accounts.filter_by_code(
-                code=code, start_date=start or "", end_date=end or ""
+                code=code, start_date=start or "", end_date=end
             ).items():
                 account_frames.setdefault(acc_name, []).append(df)
         frames = {name: pd.concat(fs) for name, fs in account_frames.items()}
@@ -228,7 +231,6 @@ def transactions_layout(all_accounts, account_options: list[dict],
                         sort_action="native",
                         sort_mode="multi",
                         page_action="none",
-                        virtualization=True,
                         fixed_rows={"headers": True},
                         style_table={"height": "calc(100vh - 240px)",
                                      "overflowY": "auto", "overflowX": "auto"},
@@ -291,7 +293,6 @@ def transactions_layout(all_accounts, account_options: list[dict],
                                         sort_action="native",
                                         sort_mode="multi",
                                         page_action="none",
-                                        virtualization=True,
                                         fixed_rows={"headers": True},
                                         style_table={"height": "calc(100vh - 290px)",
                                                      "overflowY": "auto",
@@ -390,7 +391,7 @@ def register_transactions_callbacks(app, all_accounts) -> None:
         end = (period_data or {}).get("end")
         float_mask, float_abs = _parse_float_filter(float_str)
         matched = _cross_frames(all_accounts, filtered_names or [], codes or [],
-                                start, end, str_filter, float_val, float_abs)
+                                start, end, str_filter, float_mask, float_abs)
         if acc_name not in matched:
             return [], [], {}
         account = all_accounts[acc_name]
@@ -420,6 +421,8 @@ def register_transactions_callbacks(app, all_accounts) -> None:
         if not acc_name:
             return ""
         account = all_accounts[acc_name]
+        if isinstance(rows, dict):
+            rows = [v for v in rows.values() if isinstance(v, dict) and "_idx" in v]
         n = 0
         for row in rows:
             idx, new_code = row["_idx"], row["code"]
@@ -447,6 +450,8 @@ def register_transactions_callbacks(app, all_accounts) -> None:
     def save_table(_, rows, account_name, period_data, lang):
         lang = lang or "en"
         account = all_accounts[account_name]
+        if isinstance(rows, dict):
+            rows = [v for v in rows.values() if isinstance(v, dict) and "_idx" in v]
         n = 0
         for row in rows:
             idx, new_code = row["_idx"], row["code"]

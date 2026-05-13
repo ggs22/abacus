@@ -65,14 +65,15 @@ def register_profiles_callbacks(app) -> None:
         Output("category-filter", "value"),
         Output("family-filter", "value"),
         Output("institution-filter", "value"),
+        Output("global-period-input", "value"),
         Input("profile-selector", "value"),
         prevent_initial_call=True,
     )
     def load_profile(name):
         if not name:
-            return None, None, None
+            return None, None, None, "::"
         p = _load().get(name, {})
-        return p.get("categories"), p.get("families"), p.get("institutions")
+        return p.get("categories"), p.get("families"), p.get("institutions"), p.get("period", "::")
 
     @app.callback(
         Output("profile-selector", "options"),
@@ -86,10 +87,11 @@ def register_profiles_callbacks(app) -> None:
         State("category-filter", "value"),
         State("family-filter", "value"),
         State("institution-filter", "value"),
+        State("global-period-input", "value"),
         State("lang", "data"),
         prevent_initial_call=True,
     )
-    def save_or_delete(_, __, name_input, selected, categories, families, institutions, lang):
+    def save_or_delete(_, __, name_input, selected, categories, families, institutions, period, lang):
         lang = lang or "en"
         profiles = _load()
         triggered = ctx.triggered_id
@@ -103,6 +105,7 @@ def register_profiles_callbacks(app) -> None:
                 "categories": categories or [],
                 "families": families or [],
                 "institutions": institutions or [],
+                "period": period or "::",
             }
             _save(profiles)
             options = [{"label": k, "value": k} for k in profiles]

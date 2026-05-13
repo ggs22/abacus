@@ -548,14 +548,18 @@ class Account:
             bal = self.balance_column[are_near].iloc[-1:, 0].item()
         return bal
 
-    def get_period_data(self, start_date: str, end_date: str = "") -> Tuple[pd.DataFrame, int]:
-        first_day, last_day = get_period_bounds(start_date, end_date)
+    def get_period_data(self, start_date: str, end_date: str | None = "") -> Tuple[pd.DataFrame, int]:
+        first_day, last_day = get_period_bounds(start_date, end_date if end_date is not None else "")
         period_data = deepcopy(self.transaction_data)
-        period_data = period_data[(period_data['date'].array.date >= first_day) &
-                                  (period_data['date'].array.date <= last_day)]
+        if end_date is None:
+            period_data = period_data[period_data['date'].array.date >= first_day]
+        else:
+            period_data = period_data[(period_data['date'].array.date >= first_day) &
+                                      (period_data['date'].array.date <= last_day)]
 
         if len(period_data) > 0:
-            days = (last_day - first_day).days + 1
+            effective_last = period_data['date'].array.date.max() if end_date is None else last_day
+            days = (effective_last - first_day).days + 1
         else:
             period_data, days = None, 0
 

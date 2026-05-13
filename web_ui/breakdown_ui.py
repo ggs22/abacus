@@ -38,7 +38,7 @@ def register_breakdown_callbacks(app, all_accounts) -> None:
         lang = lang or "en"
         theme = theme or "light"
         start = (period_data or {}).get("start")
-        if not start or not selected_names:
+        if not selected_names:
             return _apply_theme(go.Figure(), theme)
         end = (period_data or {}).get("end")
         filtered = AccountsList([all_accounts[n] for n in selected_names])

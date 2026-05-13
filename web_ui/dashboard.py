@@ -137,15 +137,10 @@ def serve_layout():
             dcc.Input(
                 id="global-period-input",
                 type="text",
+                value="::",
                 placeholder=t(lang, "ph_period"),
                 debounce=True,
                 style={"width": "180px", "fontFamily": "monospace"},
-            ),
-            html.Button(
-                t(lang, "reload"),
-                id="reload-accounts-btn",
-                n_clicks=0,
-                style={"flexShrink": "0"},
             ),
             _settings_btn,
         ],
@@ -244,29 +239,6 @@ def update_filtered_accounts(categories, families, institutions):
         and (not institutions or acc.institution in institutions)
     ]
 
-
-@app.callback(
-    Output("category-filter", "options"),
-    Output("category-filter", "value", allow_duplicate=True),
-    Output("family-filter", "options"),
-    Output("family-filter", "value", allow_duplicate=True),
-    Output("institution-filter", "options"),
-    Output("institution-filter", "value", allow_duplicate=True),
-    Input("reload-accounts-btn", "n_clicks"),
-    prevent_initial_call=True,
-)
-def reload_accounts(_n):
-    all_accounts.reload(AccountFactory().accounts)
-    category_options = [{"label": v, "value": v} for v in sorted({
-        acc.category for acc in all_accounts if acc.category
-    })]
-    family_options = [{"label": v, "value": v} for v in sorted({
-        acc.family for acc in all_accounts if acc.family
-    })]
-    institution_options = [{"label": v, "value": v} for v in sorted({
-        acc.institution for acc in all_accounts if acc.institution
-    })]
-    return category_options, [], family_options, [], institution_options, []
 
 
 @app.callback(

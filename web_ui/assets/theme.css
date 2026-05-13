@@ -224,6 +224,77 @@ summary {
   background-color: var(--plot-paper) !important;
 }
 
+/* ── RadioItems labels ──────────────────────────────────────────────────── */
+#txn-cross-selector .dash-options-list-option,
+#lang-toggle .dash-options-list-option,
+#theme-toggle .dash-options-list-option,
+#assign-code-selector .dash-options-list-option {
+  color: var(--text2) !important;
+  background: transparent !important;
+}
+
+/* ── DataTable: code column cells ───────────────────────────────────────── */
+.dash-spreadsheet td[data-dash-column="code"] {
+  color: var(--text2) !important;
+}
+
+/* ── DataTable cell dropdown (react-select / Select-* classes) ──────────── */
+/* The DataTable uses the legacy react-select library for inline dropdown     */
+/* editing, which has entirely different class names from dcc.Dropdown.       */
+.Select-menu-outer {
+  background-color: var(--bg2) !important;
+  border-color: var(--border) !important;
+  z-index: 9999 !important;
+}
+
+.Select-option {
+  background-color: var(--bg2) !important;
+  color: var(--text) !important;
+}
+
+.Select-option.is-focused {
+  background-color: var(--bg3) !important;
+  color: var(--text) !important;
+}
+
+.Select-option.is-selected {
+  background-color: var(--bg3) !important;
+  color: var(--text) !important;
+  font-weight: bold;
+}
+
+.Select-control {
+  background-color: var(--bg) !important;
+  border: none !important;
+  box-shadow: none !important;
+}
+
+.Select-value-label {
+  color: var(--text2) !important;
+}
+
+.Select-placeholder {
+  color: var(--text2) !important;
+}
+
+.Select-input input {
+  color: var(--text) !important;
+  background-color: transparent !important;
+  border: none !important;
+  padding: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.Select-arrow {
+  border-top-color: var(--text2) !important;
+}
+
+/* ── Dropdown selected-count chip ───────────────────────────────────────── */
+.dash-dropdown-value-count {
+  color: var(--text2) !important;
+}
+
 /* ── Settings panel ─────────────────────────────────────────────────────── */
 #settings-panel {
   background-color: var(--bg3) !important;

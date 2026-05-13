@@ -17,6 +17,7 @@ def _expand_year(y_str: str) -> int:
 
 
 def _parse_token(token: str) -> dict:
+    token = token.replace("/", "-").replace(".", "-")
     m = _DAY_RE.match(token)
     if m:
         y_str, mo_str, d_str = m.groups()
@@ -87,17 +88,23 @@ def _parse_right_end(token: str, left: dict) -> str:
     return right["end"]
 
 
-def parse_period(s: str) -> tuple[str, str]:
+def parse_period(s: str) -> tuple[str | None, str | None]:
     """Parse a period string into (start_date, end_date) ISO strings.
 
     Accepts: year (2026), year-month (2026-01), quarter (2026Q1),
              day (2026-01-15), or a range with ':' (2026-01:2026-03).
+    A trailing ':' means open-ended (end=None).
+    'all', 'ALL', or '::' means no bounds (start=None, end=None).
     Two-digit years are expanded to 2000+.
     """
     s = s.strip()
+    if s.lower() == "all" or s == "::":
+        return None, None
     if ":" in s:
         left_str, right_str = s.split(":", 1)
         left = _parse_token(left_str.strip())
+        if not right_str.strip():
+            return left["start"], None
         end = _parse_right_end(right_str.strip(), left)
         return left["start"], end
     parsed = _parse_token(s)

@@ -251,14 +251,15 @@ def plot_forecasts(accounts_list: "AccountsList",
 
 
 def barplot(accounts_list: "AccountsList",
-            start_date: str,
-            end_date: str = "",
+            start_date: str | None,
+            end_date: str | None = "",
             excluded_codes: Sequence[str] = ('internal_cashflow', 'credit', 'expense_account'),
             title: str = "") -> go.Figure:
     data_df = list()
     overall_len = 0
     for acc in accounts_list:
-        data, period_length = acc.get_period_data(start_date=start_date, end_date=end_date)
+        effective_start = start_date or acc.transaction_data['date'].min().strftime("%Y-%m-%d")
+        data, period_length = acc.get_period_data(start_date=effective_start, end_date=end_date)
         if data is not None:
             overall_len = max(overall_len, period_length)
             data = data.groupby(by='code').sum(numeric_only=True)
