@@ -640,6 +640,19 @@ class Account:
             pickle.dump(self.processed_data_files, processed_files_export)
         self.logger.info(f"exported transaction data & processed files list in {str(export_dir)}")
 
+    def import_from_export(self) -> None:
+        export_path = Path(self.account_dir).joinpath('exports', f"transaction_data_{self.name}.csv")
+        if not export_path.exists():
+            raise FileNotFoundError(f"No export found at {export_path}. Run export() first.")
+        df = pd.read_csv(export_path, sep="\t", index_col=0)
+        df['date'] = pd.to_datetime(df['date'])
+        for col in self.numerical_names:
+            if col in df.columns:
+                df[col] = pd.to_numeric(df[col])
+        df.reset_index(drop=True, inplace=True)
+        self.transaction_data = df
+        self.logger.info(f"Loaded transaction data from export for {self.name}")
+
     def interactive_codes_update(self) -> None:
         na_idx = self.transaction_data.code == 'na'
 

@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from accounting import Account, AccountStats, PREDICTED_BALANCE
+from backend import Account, AccountStats, PREDICTED_BALANCE
 
 
 ITERATION = "iteration"

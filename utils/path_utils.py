@@ -24,7 +24,7 @@ def root_dir() -> Path:
 
 @ensure_dir_exists
 def accounting_dir() -> Path:
-    return root_dir.joinpath('accounting')
+    return root_dir.joinpath('backend')
 
 
 @ensure_dir_exists

@@ -1,3 +1,3 @@
-from web_ui.dashboard import app
+from frontend.dashboard import app
 
 app.run(debug=True, use_reloader=False)

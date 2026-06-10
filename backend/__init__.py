@@ -7,8 +7,8 @@ from omegaconf import OmegaConf
 
 import utils.path_utils as pu
 
-from accounting.Account import Account, AccountStats, PREDICTED_BALANCE
-from accounting.account_list import AccountsList, _COLORS
+from backend.account import Account, AccountStats, PREDICTED_BALANCE
+from backend.account_list import AccountsList, _COLORS
 
 logging.basicConfig(level=logging.INFO)
 

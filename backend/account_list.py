@@ -4,9 +4,9 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-from accounting.forecast_strategies import Forecast
-from accounting.Account import Account, _compute_daily_std
-from accounting.plotting import (plot_accounts_list, plot_cumulative_balances,
+from backend.forecast_strategies import Forecast
+from backend.account import Account, _compute_daily_std
+from backend.plotting import (plot_accounts_list, plot_cumulative_balances,
                                  plot_forecasts, barplot)
 from utils.utils import mad
 

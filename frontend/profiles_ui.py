@@ -5,7 +5,7 @@ from dash import html, dcc, Input, Output, State, ctx
 
 from .i18n import t
 
-_PROFILES_PATH = Path(__file__).parent.parent / "accounting" / "accounts" / "profiles.json"
+_PROFILES_PATH = Path(__file__).parent.parent / "backend" / "profiles.json"
 
 
 def _load() -> dict:

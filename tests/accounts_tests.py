@@ -1,8 +1,8 @@
 import datetime as dt
 
 
-from accounting import AccountsList, AccountFactory
-from accounting.forecast_strategies import (
+from backend import AccountsList, AccountFactory
+from backend.forecast_strategies import (
     MeanTransactionsStrategy, MonteCarloStrategy, FixedLoanPaymentForecastStrategy,
     CreditCardPaymentForecastStrategy, RequestedForecastList, ForecastFactory, PlannedTransactionsStrategy,
     ParallelMonteCarloStrategy

@@ -5,11 +5,11 @@ import pandas as pd
 import plotly.colors
 import plotly.graph_objects as go
 
-from accounting.Account import Account
-from accounting.forecast_strategies import Forecast
+from backend.account import Account
+from backend.forecast_strategies import Forecast
 
 if TYPE_CHECKING:
-    from accounting.account_list import AccountsList
+    from backend.account_list import AccountsList
 
 
 def hex_to_rgba(color: str, alpha: float) -> str:

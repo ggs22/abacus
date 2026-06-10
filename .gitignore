@@ -130,7 +130,7 @@ dmypy.json
 .pyre/
 
 .idea/*
-accounting/accounts
+backend/accounts
 accounting/data
 images/
 legacy_pickle_objects/

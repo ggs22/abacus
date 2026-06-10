@@ -6,7 +6,7 @@ from typing import Callable
 import pandas as pd
 from dash import html, dcc, dash_table, Input, Output, State, ctx
 
-from accounting.account_list import AccountsList
+from backend.account_list import AccountsList
 from .i18n import t
 
 

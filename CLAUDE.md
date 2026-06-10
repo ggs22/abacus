@@ -11,7 +11,7 @@ pip install -r requirements.txt
 
 **Run the web app (loads accounts, computes forecasts, serves at `localhost:8050`):**
 ```bash
-python -m web_ui
+python -m frontend
 ```
 
 **Run unit tests:**
@@ -25,12 +25,12 @@ python -m pytest tests/test_accounting_module.py::TestForecastStrategies::test_m
 
 ### Account loading pipeline
 
-`AccountFactory` (in `accounting/__init__.py`) scans `accounting/accounts/*/config.yaml` at startup and instantiates one `Account` per directory. Accounts are stored both as module-level globals and collected into an `AccountsList`. The factory also exposes `get_account_from_group()` to filter by institution (NationalBank, WealthSimple, etc.).
+`AccountFactory` (in `backend/__init__.py`) scans `backend/accounts/*/config.yaml` at startup and instantiates one `Account` per directory. Accounts are stored both as module-level globals and collected into an `AccountsList`. The factory also exposes `get_account_from_group()` to filter by institution (NationalBank, WealthSimple, etc.).
 
-Each `Account` (in `accounting/Account.py`) is backed by:
+Each `Account` (in `backend/Account.py`) is backed by:
 - A `config.yaml` that defines column names, separator, encoding, date format, numerical columns with signs (+1/-1), and an optional `balance_column`.
 - Monthly CSVs under `csv_data/`. New files are detected by MD5 hash of filename; already-processed files are skipped.
-- `assignations.json` for account-specific keyword→code mapping (common mappings live in `accounting/accounts/common_assignation.json`).
+- `assignations.json` for account-specific keyword→code mapping (common mappings live in `backend/accounts/common_assignation.json`).
 - `planned_transactions.json` for recurring (monthly/yearly) and one-off future transactions.
 - A pickle at `pickle_objects/<AccountName>.pkl` that caches `processed_data_files` and `transaction_data` between runs.
 
@@ -38,7 +38,7 @@ Each `Account` (in `accounting/Account.py`) is backed by:
 
 ### Forecast strategies
 
-All strategies inherit `ForecastStrategy` (in `accounting/forecast_strategies.py`) and follow the same pattern:
+All strategies inherit `ForecastStrategy` (in `backend/forecast_strategies.py`) and follow the same pattern:
 
 1. The public `predict()` method sets up outer state (planned transactions, simulation date) and defines a nested `_predict(stats)` closure.
 2. `_prediction_wraper()` handles caching: if a `.pkl` for this account + strategy + date exists it loads it; otherwise it calls `_predict()` and serializes the result.

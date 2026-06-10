@@ -2,8 +2,8 @@ from pathlib import Path
 
 from dash import Dash, dcc, html, Input, Output, State
 
-from accounting import AccountFactory
-from accounting.account_list import AccountsList
+from backend import AccountFactory
+from backend.account_list import AccountsList
 from utils.period_utils import parse_period
 from .gui_config import load_gui_config, save_gui_config
 from .i18n import t

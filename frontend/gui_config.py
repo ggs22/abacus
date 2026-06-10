@@ -1,7 +1,7 @@
 import json
 from pathlib import Path
 
-_GUI_CONFIG_PATH = Path(__file__).parent.parent / "accounting" / "accounts" / "gui_config.json"
+_GUI_CONFIG_PATH = Path(__file__).parent.parent / "backend" / "gui_config.json"
 
 
 def load_gui_config() -> dict:

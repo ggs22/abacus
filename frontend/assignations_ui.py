@@ -7,7 +7,7 @@ from .i18n import t
 
 
 def _common_path() -> Path:
-    return Path(__file__).parent.parent / "accounting" / "accounts" / "common_assignation.json"
+    return Path(__file__).parent.parent / "backend" / "accounts" / "common_assignation.json"
 
 
 def _account_path(account_dir: str) -> Path:

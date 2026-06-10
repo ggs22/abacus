@@ -1,7 +1,7 @@
 import plotly.graph_objects as go
 from dash import dcc, html, Input, Output, State
 
-from accounting.account_list import AccountsList
+from backend.account_list import AccountsList
 from .i18n import t
 
 _DARK_LAYOUT = dict(paper_bgcolor="#1e1e2e", plot_bgcolor="#181825", font_color="#cdd6f4")

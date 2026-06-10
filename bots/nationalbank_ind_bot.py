@@ -18,7 +18,7 @@ ROOT_DIR     = Path(__file__).resolve().parents[1]
 DRIVER_PATH  = ROOT_DIR / "bots" / "chrome_driver" / "chromedriver"
 PROFILE_DIR  = ROOT_DIR / "bots" / "chrome_profile"
 DOWNLOAD_DIR = ROOT_DIR / "bots" / "downloads"
-ACCOUNTS_DIR = ROOT_DIR / "accounting" / "accounts"
+ACCOUNTS_DIR = ROOT_DIR / "backend" / "accounts"
 
 DOWNLOAD_DIR.mkdir(exist_ok=True)
 

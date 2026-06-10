@@ -6,16 +6,16 @@ import plotly.graph_objects as go
 from dash import dcc, html, Input, Output, State, ALL, MATCH, ctx
 from dash.exceptions import PreventUpdate
 
-from accounting.account_list import AccountsList
+from backend.account_list import AccountsList
 from .i18n import t
-from accounting.forecast_strategies import (
+from backend.forecast_strategies import (
     PlannedTransactionsStrategy, MeanTransactionsStrategy,
     MonteCarloStrategy, ParallelMonteCarloStrategy, NoTransactionsStrategy,
     FixedLoanPaymentForecastStrategy, CreditCardPaymentForecastStrategy,
     ForecastFactory,
 )
 
-_CONFIG_PATH = Path(__file__).parent.parent / "accounting" / "accounts" / "forecast_config.json"
+_CONFIG_PATH = Path(__file__).parent.parent / "backend" / "forecast_config.json"
 
 _STRATEGIES = {
     "Planned": PlannedTransactionsStrategy,

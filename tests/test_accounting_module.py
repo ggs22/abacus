@@ -22,10 +22,10 @@ import pandas as pd
 from omegaconf import DictConfig
 
 # Import modules under test
-from accounting import AccountFactory, PREDICTED_BALANCE
-from accounting.Account import Account, AccountStats, print_codes_menu
-from accounting.account_list import AccountsList, plot_forecast
-from accounting.forecast_strategies import (
+from backend import AccountFactory, PREDICTED_BALANCE
+from backend.account import Account, AccountStats, print_codes_menu
+from backend.account_list import AccountsList, plot_forecast
+from backend.forecast_strategies import (
     ForecastStrategy, MonteCarloStrategy, ParallelMonteCarloStrategy,
     MeanTransactionsStrategy, PlannedTransactionsStrategy, NoTransactionsStrategy
 )
@@ -63,8 +63,8 @@ class TestAccountClass(unittest.TestCase):
             'Solde': [1000.0, 950.0, 920.0]
         })
         
-    @patch('accounting.Account.Path')
-    @patch('accounting.Account.pd.read_csv')
+    @patch('backend.account.Path')
+    @patch('backend.account.pd.read_csv')
     def test_account_initialization(self, mock_read_csv, mock_path):
         """Test Account object initialization."""
         mock_read_csv.return_value = self.sample_transactions.copy()
@@ -78,8 +78,8 @@ class TestAccountClass(unittest.TestCase):
         self.assertEqual(account.negative_names, ['Retraits'])
         self.assertEqual(account.balance_column_name, 'Solde')
         
-    @patch('accounting.Account.Path')
-    @patch('accounting.Account.pd.read_csv')
+    @patch('backend.account.Path')
+    @patch('backend.account.pd.read_csv')
     def test_account_balance_calculation(self, mock_read_csv, mock_path):
         """Test balance calculation methods."""
         mock_read_csv.return_value = self.sample_transactions.copy()
@@ -97,8 +97,8 @@ class TestAccountClass(unittest.TestCase):
         balance_at_date = account.get_balance_at_date('2025-01-02')
         self.assertEqual(balance_at_date, 950.0)
         
-    @patch('accounting.Account.Path')  
-    @patch('accounting.Account.pd.read_csv')
+    @patch('backend.account.Path')  
+    @patch('backend.account.pd.read_csv')
     def test_account_transaction_filtering(self, mock_read_csv, mock_path):
         """Test transaction filtering and period stats."""
         mock_read_csv.return_value = self.sample_transactions.copy()
@@ -121,8 +121,8 @@ class TestAccountClass(unittest.TestCase):
         account = Account(conf=self.test_config)
         self.assertTrue(hasattr(account, 'columns_names'))
         
-    @patch('accounting.Account.Path')
-    @patch('accounting.Account.json.load')
+    @patch('backend.account.Path')
+    @patch('backend.account.json.load')
     def test_planned_transactions_loading(self, mock_json_load, mock_path):
         """Test planned transactions functionality."""
         mock_path.return_value.exists.return_value = True
@@ -209,8 +209,8 @@ class TestAccountFactory(unittest.TestCase):
         self.assertIsInstance(factory, AccountFactory)
         
     @patch('utils.path_utils.accounts_dir')
-    @patch('accounting.OmegaConf.load')
-    @patch('accounting.Account')
+    @patch('backend.OmegaConf.load')
+    @patch('backend.account.Account')
     def test_load_accounts(self, mock_account_class, mock_omega_load, mock_accounts_dir):
         """Test loading accounts from directory."""
         mock_accounts_dir.return_value = self.accounts_dir
@@ -271,7 +271,7 @@ class TestForecastStrategies(unittest.TestCase):
         self.assertIsInstance(path, Path)
         self.assertTrue(path.name.endswith('_prediction.pkl'))
         
-    @patch('accounting.forecast_strategies.Path')
+    @patch('backend.forecast_strategies.Path')
     def test_mean_transactions_strategy(self, mock_path):
         """Test MeanTransactionsStrategy."""
         mock_path.return_value.exists.return_value = False
@@ -297,7 +297,7 @@ class TestForecastStrategies(unittest.TestCase):
             self.assertIsInstance(result, pd.DataFrame)
             mock_wrapper.assert_called_once()
             
-    @patch('accounting.forecast_strategies.Path')
+    @patch('backend.forecast_strategies.Path')
     def test_no_transactions_strategy(self, mock_path):
         """Test NoTransactionsStrategy."""
         mock_path.return_value.exists.return_value = False
@@ -322,7 +322,7 @@ class TestForecastStrategies(unittest.TestCase):
             
             self.assertIsInstance(result, pd.DataFrame)
             
-    @patch('accounting.forecast_strategies.Path')
+    @patch('backend.forecast_strategies.Path')
     def test_monte_carlo_strategy(self, mock_path):
         """Test MonteCarloStrategy."""
         mock_path.return_value.exists.return_value = False
@@ -348,7 +348,7 @@ class TestForecastStrategies(unittest.TestCase):
             
             self.assertIsInstance(result, pd.DataFrame)
             
-    @patch('accounting.forecast_strategies.Path')
+    @patch('backend.forecast_strategies.Path')
     def test_parallel_monte_carlo_strategy(self, mock_path):
         """Test ParallelMonteCarloStrategy."""
         mock_path.return_value.exists.return_value = False
@@ -397,7 +397,7 @@ class TestUtilityFunctions(unittest.TestCase):
             
     def test_predicted_balance_constant(self):
         """Test that PREDICTED_BALANCE constant is properly defined."""
-        from accounting.Account import PREDICTED_BALANCE
+        from backend.account import PREDICTED_BALANCE
         self.assertIsInstance(PREDICTED_BALANCE, str)
         self.assertEqual(PREDICTED_BALANCE, 'predicted_balance')
 
@@ -425,8 +425,8 @@ class TestIntegrationScenarios(unittest.TestCase):
             }
         })
         
-        with patch('accounting.Account.Path'), \
-             patch('accounting.Account.pd.read_csv') as mock_read_csv:
+        with patch('backend.account.Path'), \
+             patch('backend.account.pd.read_csv') as mock_read_csv:
             
             # Mock transaction data
             transaction_data = pd.DataFrame({
